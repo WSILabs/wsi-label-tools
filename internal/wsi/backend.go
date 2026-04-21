@@ -53,6 +53,13 @@ type ReplaceOptions struct {
 
 	// Fsync forces an fsync before the atomic rename.
 	Fsync bool
+
+	// TargetWidth and TargetHeight override the target dimensions the
+	// label is fit to. Zero means "auto": use the existing label's
+	// dimensions if there is one, else fall back to the backend's
+	// default (1200x848 for Aperio).
+	TargetWidth  int
+	TargetHeight int
 }
 
 // ReplaceResult carries metadata about a completed replace run.

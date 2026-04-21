@@ -17,20 +17,38 @@ func (backend) Name() string { return "aperio" }
 
 func (backend) Detect(path string) (bool, error) { return Detect(path) }
 
+// pickTargetDims resolves the final (width, height) for a replacement label.
+//
+// Precedence:
+//  1. Explicit override via opts.TargetWidth/Height (both must be positive).
+//  2. Existing label IFD's dimensions, if a label already exists in the file.
+//  3. Aperio canonical default (1200x848).
+//
+// This preserves orientation and aspect on files whose native label isn't
+// the canonical 1200x848 landscape (e.g., older ScanScope-era portrait labels).
+func pickTargetDims(file *tifflow.File, labelIdx int, opts wsi.ReplaceOptions) (int, int) {
+	if opts.TargetWidth > 0 && opts.TargetHeight > 0 {
+		return opts.TargetWidth, opts.TargetHeight
+	}
+	if labelIdx >= 0 {
+		ifd := file.IFDs[labelIdx]
+		w, wok := ifd.UintValue(tifflow.TagImageWidth, file.Header.ByteOrder)
+		h, hok := ifd.UintValue(tifflow.TagImageLength, file.Header.ByteOrder)
+		if wok && hok && w > 0 && h > 0 {
+			return int(w), int(h)
+		}
+	}
+	return AperioLabelWidth, AperioLabelHeight
+}
+
 func (backend) ReplaceLabel(inPath, outPath string, opts wsi.ReplaceOptions) (*wsi.ReplaceResult, error) {
 	if opts.Image == nil {
 		return nil, fmt.Errorf("aperio: replace: opts.Image is nil")
 	}
 
-	// Default BG to Aperio parchment if caller didn't set one (zero-value
-	// RGBA is fully transparent black, which is never what we want).
+	// Default BG to Aperio parchment if caller didn't set one.
 	if opts.BG == (wsi.ReplaceOptions{}).BG {
 		opts.BG = AperioLabelBG
-	}
-
-	prepared, err := PrepareLabel(opts.Image, AperioLabelWidth, AperioLabelHeight, opts)
-	if err != nil {
-		return nil, err
 	}
 
 	f, err := os.Open(inPath)
@@ -44,6 +62,13 @@ func (backend) ReplaceLabel(inPath, outPath string, opts wsi.ReplaceOptions) (*w
 	}
 
 	labelIdx := FindLabelIFD(file)
+	targetW, targetH := pickTargetDims(file, labelIdx, opts)
+
+	prepared, err := PrepareLabel(opts.Image, targetW, targetH, opts)
+	if err != nil {
+		return nil, err
+	}
+
 	rep := BuildLabelIFD(prepared)
 
 	params := tifflow.SpliceParams{

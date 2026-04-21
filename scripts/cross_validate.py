@@ -62,17 +62,29 @@ def pyramid_dims(path: Path) -> list[tuple[int, int]]:
         ]
 
 
-def make_label(tmpdir: Path) -> tuple[Path, np.ndarray]:
-    """Build a synthetic 1200x848 RGB label (Aperio's exact target dims).
+def existing_label_dims(svs: Path) -> tuple[int, int] | None:
+    """Return (width, height) of the file's label IFD, or None if absent."""
+    with tifffile.TiffFile(str(svs)) as tf:
+        for page in tf.pages:
+            desc_tag = page.tags.get("ImageDescription")
+            if desc_tag is None:
+                continue
+            lines = str(desc_tag.value).splitlines()
+            if len(lines) >= 2 and lines[1].startswith("label"):
+                return int(page.imagewidth), int(page.imagelength)
+    return None
 
-    Writing at target dims means --resize=none is valid and the encode/
-    decode round-trip is bit-exact lossless (LZW + predictor 2). The
-    returned array is the ground truth we'll compare the decoded output
-    label against.
+
+def make_label(tmpdir: Path, width: int, height: int) -> tuple[Path, np.ndarray]:
+    """Build a synthetic noise label at (width, height).
+
+    Caller sizes the label to match the target SVS's existing label IFD so
+    --resize=none applies (no resampling), which in turn means the LZW +
+    predictor-2 round-trip is bit-exact lossless.
     """
     rng = np.random.default_rng(42)
-    arr = rng.integers(0, 256, size=(848, 1200, 3), dtype=np.uint8)
-    p = tmpdir / "label.png"
+    arr = rng.integers(0, 256, size=(height, width, 3), dtype=np.uint8)
+    p = tmpdir / f"label_{width}x{height}.png"
     Image.fromarray(arr).save(p)
     return p, arr
 
@@ -127,11 +139,16 @@ def label_is_non_trivial(arr: np.ndarray) -> bool:
 def validate_one(
     exe: Path,
     sample: Path,
-    label: Path,
-    label_truth: np.ndarray,
     tmpdir: Path,
     tiffinfo: str | None,
 ) -> tuple[bool, str]:
+    # Size the synthetic label to match the existing label IFD so wsi-label's
+    # dim-preserving path picks the same target and --resize=none holds.
+    dims = existing_label_dims(sample)
+    if dims is None:
+        return False, "no label IFD in input (test corpus should always have one)"
+    label, label_truth = make_label(tmpdir, dims[0], dims[1])
+
     out = tmpdir / f"out_{sample.name}"
     # --resize=none forces the "exact target dims" path so the round-trip
     # through LZW + predictor-2 is bit-exact lossless.
@@ -213,7 +230,6 @@ def main() -> int:
         )
 
     TMP.mkdir(exist_ok=True)
-    label, label_truth = make_label(TMP)
 
     samples = sorted(SAMPLES.glob("*.svs"))
     if not samples:
@@ -222,7 +238,7 @@ def main() -> int:
 
     failures = 0
     for s in samples:
-        ok, msg = validate_one(exe, s, label, label_truth, TMP, tiffinfo)
+        ok, msg = validate_one(exe, s, TMP, tiffinfo)
         status = "OK " if ok else "FAIL"
         print(f"[{status}] {s.name}: {msg}")
         if not ok:

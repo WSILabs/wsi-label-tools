@@ -30,6 +30,7 @@ func RunReplace(args []string, stdout, stderr io.Writer) error {
 	rotate := fs.Int("rotate", 0, "rotate label before resize: 0 / 90 / 180 / 270")
 	resize := fs.String("resize", "fit", "resize policy: fit | stretch | none")
 	force := fs.Bool("force", false, "bypass the >2x aspect-ratio safety check on --resize=fit")
+	labelDims := fs.String("label-dims", "", "override target label dimensions, e.g. '1200x848' (default: match existing label's dims, else backend default)")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("%w: %v", ErrUsage, err)
 	}
@@ -70,6 +71,10 @@ func RunReplace(args []string, stdout, stderr io.Writer) error {
 	if *rotate != 0 && *rotate != 90 && *rotate != 180 && *rotate != 270 {
 		return fmt.Errorf("%w: --rotate must be 0, 90, 180, or 270", ErrUsage)
 	}
+	tw, th, err := parseLabelDims(*labelDims)
+	if err != nil {
+		return fmt.Errorf("%w: --label-dims: %v", ErrUsage, err)
+	}
 
 	// Dispatch to aperio backend (registry has one entry today).
 	b := aperio.New()
@@ -88,6 +93,8 @@ func RunReplace(args []string, stdout, stderr io.Writer) error {
 		Force:         *force,
 		StrictReplace: *strict,
 		Fsync:         *fsyncFlag,
+		TargetWidth:   tw,
+		TargetHeight:  th,
 	}
 	res, err := b.ReplaceLabel(in, out, opts)
 	if err != nil {
@@ -120,6 +127,27 @@ func parseHexRGB(s string) (color.RGBA, error) {
 		B: uint8(n),
 		A: 255,
 	}, nil
+}
+
+// parseLabelDims parses "WxH" (or empty, meaning "auto") into width, height.
+// Empty string returns (0, 0, nil) which the backend reads as "auto".
+func parseLabelDims(s string) (int, int, error) {
+	if s == "" {
+		return 0, 0, nil
+	}
+	parts := strings.SplitN(strings.ToLower(s), "x", 2)
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("expected WxH, got %q", s)
+	}
+	w, err := strconv.Atoi(parts[0])
+	if err != nil || w <= 0 {
+		return 0, 0, fmt.Errorf("bad width %q", parts[0])
+	}
+	h, err := strconv.Atoi(parts[1])
+	if err != nil || h <= 0 {
+		return 0, 0, fmt.Errorf("bad height %q", parts[1])
+	}
+	return w, h, nil
 }
 
 func parseResizeMode(s string) (wsi.ResizeMode, error) {
