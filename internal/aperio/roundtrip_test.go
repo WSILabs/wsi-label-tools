@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/cornish/wsi-label-tools/internal/tifflow"
+	"github.com/cornish/wsi-label-tools/internal/wsi"
 )
 
 // For each sample SVS in sample_svs/, run replace with a synthetic label and
@@ -40,7 +41,7 @@ func TestReplaceLabel_AllSamples(t *testing.T) {
 			out := filepath.Join(t.TempDir(), "out.svs")
 
 			b := New()
-			res, err := b.ReplaceLabel(in, out, labelImg, false, false)
+			res, err := b.ReplaceLabel(in, out, wsi.ReplaceOptions{Image: labelImg})
 			if err != nil {
 				t.Fatalf("ReplaceLabel: %v", err)
 			}

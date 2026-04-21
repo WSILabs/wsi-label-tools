@@ -35,7 +35,10 @@ func TestReplaceLabel_CMU1SmallRegion(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "relabeled.svs")
 
 	b := New()
-	res, err := b.ReplaceLabel(src, out, newTestLabel(), false, true)
+	res, err := b.ReplaceLabel(src, out, wsi.ReplaceOptions{
+		Image: newTestLabel(),
+		Fsync: true,
+	})
 	if err != nil {
 		t.Fatalf("ReplaceLabel: %v", err)
 	}

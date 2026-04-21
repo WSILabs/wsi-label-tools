@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"image"
+	"image/color"
 	"io"
 	"os"
 	"strconv"
@@ -25,7 +26,10 @@ func RunReplace(args []string, stdout, stderr io.Writer) error {
 	strict := fs.Bool("strict-replace", false, "fail if no label IFD exists")
 	quiet := fs.Bool("q", false, "silence non-error stderr output")
 	fsyncFlag := fs.Bool("fsync", true, "fsync output before rename")
-	bg := fs.String("bg", "F5F5E6", "letterbox background color RRGGBB")
+	bg := fs.String("bg", "F5F5E6", "letterbox background color RRGGBB (used by --resize=fit)")
+	rotate := fs.Int("rotate", 0, "rotate label before resize: 0 / 90 / 180 / 270")
+	resize := fs.String("resize", "fit", "resize policy: fit | stretch | none")
+	force := fs.Bool("force", false, "bypass the >2x aspect-ratio safety check on --resize=fit")
 	if err := fs.Parse(args); err != nil {
 		return fmt.Errorf("%w: %v", ErrUsage, err)
 	}
@@ -59,7 +63,13 @@ func RunReplace(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("%w: --bg: %v", ErrUsage, err)
 	}
-	_ = bgColor // currently aperio.AperioLabelBG is used; future: thread through.
+	resizeMode, err := parseResizeMode(*resize)
+	if err != nil {
+		return fmt.Errorf("%w: --resize: %v", ErrUsage, err)
+	}
+	if *rotate != 0 && *rotate != 90 && *rotate != 180 && *rotate != 270 {
+		return fmt.Errorf("%w: --rotate must be 0, 90, 180, or 270", ErrUsage)
+	}
 
 	// Dispatch to aperio backend (registry has one entry today).
 	b := aperio.New()
@@ -70,7 +80,16 @@ func RunReplace(args []string, stdout, stderr io.Writer) error {
 	if !ok {
 		return fmt.Errorf("%w: not an Aperio SVS", ErrFormatUnrecognized)
 	}
-	res, err := b.ReplaceLabel(in, out, img, *strict, *fsyncFlag)
+	opts := wsi.ReplaceOptions{
+		Image:         img,
+		BG:            bgColor,
+		Rotate:        *rotate,
+		Resize:        resizeMode,
+		Force:         *force,
+		StrictReplace: *strict,
+		Fsync:         *fsyncFlag,
+	}
+	res, err := b.ReplaceLabel(in, out, opts)
 	if err != nil {
 		return err
 	}
@@ -83,22 +102,35 @@ func RunReplace(args []string, stdout, stderr io.Writer) error {
 	if !*quiet {
 		fmt.Fprintf(stdout, "wsi-label: replaced label: %s → %s\n", in, out)
 	}
-	_ = wsi.ErrNoLabel // keep import live for error-type checks in Run
 	return nil
 }
 
-func parseHexRGB(s string) (struct{ R, G, B uint8 }, error) {
-	var rgb struct{ R, G, B uint8 }
+func parseHexRGB(s string) (color.RGBA, error) {
 	s = strings.TrimPrefix(s, "#")
 	if len(s) != 6 {
-		return rgb, fmt.Errorf("expected 6 hex digits, got %q", s)
+		return color.RGBA{}, fmt.Errorf("expected 6 hex digits, got %q", s)
 	}
 	n, err := strconv.ParseUint(s, 16, 32)
 	if err != nil {
-		return rgb, err
+		return color.RGBA{}, err
 	}
-	rgb.R = uint8(n >> 16)
-	rgb.G = uint8(n >> 8)
-	rgb.B = uint8(n)
-	return rgb, nil
+	return color.RGBA{
+		R: uint8(n >> 16),
+		G: uint8(n >> 8),
+		B: uint8(n),
+		A: 255,
+	}, nil
+}
+
+func parseResizeMode(s string) (wsi.ResizeMode, error) {
+	switch strings.ToLower(s) {
+	case "fit":
+		return wsi.ResizeFit, nil
+	case "stretch":
+		return wsi.ResizeStretch, nil
+	case "none":
+		return wsi.ResizeNone, nil
+	default:
+		return 0, fmt.Errorf("must be fit, stretch, or none; got %q", s)
+	}
 }

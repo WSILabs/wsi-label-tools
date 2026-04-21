@@ -2,7 +2,6 @@ package aperio
 
 import (
 	"fmt"
-	"image"
 	"os"
 
 	"github.com/cornish/wsi-label-tools/internal/tifflow"
@@ -18,7 +17,22 @@ func (backend) Name() string { return "aperio" }
 
 func (backend) Detect(path string) (bool, error) { return Detect(path) }
 
-func (backend) ReplaceLabel(inPath, outPath string, img image.Image, strictReplace, fsync bool) (*wsi.ReplaceResult, error) {
+func (backend) ReplaceLabel(inPath, outPath string, opts wsi.ReplaceOptions) (*wsi.ReplaceResult, error) {
+	if opts.Image == nil {
+		return nil, fmt.Errorf("aperio: replace: opts.Image is nil")
+	}
+
+	// Default BG to Aperio parchment if caller didn't set one (zero-value
+	// RGBA is fully transparent black, which is never what we want).
+	if opts.BG == (wsi.ReplaceOptions{}).BG {
+		opts.BG = AperioLabelBG
+	}
+
+	prepared, err := PrepareLabel(opts.Image, AperioLabelWidth, AperioLabelHeight, opts)
+	if err != nil {
+		return nil, err
+	}
+
 	f, err := os.Open(inPath)
 	if err != nil {
 		return nil, fmt.Errorf("open: %w", err)
@@ -30,12 +44,11 @@ func (backend) ReplaceLabel(inPath, outPath string, img image.Image, strictRepla
 	}
 
 	labelIdx := FindLabelIFD(file)
-	resized := FitTo(img, AperioLabelWidth, AperioLabelHeight, AperioLabelBG)
-	rep := BuildLabelIFD(resized)
+	rep := BuildLabelIFD(prepared)
 
 	params := tifflow.SpliceParams{
 		InPath: inPath, OutPath: outPath, File: file,
-		Replacement: rep, Fsync: fsync,
+		Replacement: rep, Fsync: opts.Fsync,
 	}
 	result := &wsi.ReplaceResult{}
 
@@ -43,7 +56,7 @@ func (backend) ReplaceLabel(inPath, outPath string, img image.Image, strictRepla
 		params.Mode = tifflow.SpliceReplace
 		params.TargetIdx = labelIdx
 	} else {
-		if strictReplace {
+		if opts.StrictReplace {
 			return nil, fmt.Errorf("aperio: %w", wsi.ErrNoLabel)
 		}
 		result.Added = true
