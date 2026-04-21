@@ -1,0 +1,40 @@
+# Binaries
+/wsi-label
+/wsi-label.exe
+/bin/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Claude Code local settings
+/.claude/
+
+# Sample WSI files: directory contents are ignored by default because real
+# slide files may carry sensitive label text. Exception: the small public
+# OpenSlide fixture is tracked so tests run out-of-the-box after clone.
+/sample_svs/*
+!/sample_svs/CMU-1-Small-Region.svs
+!/sample_svs/README.md
+
+# Intermediate label TIFFs produced by the Python orchestrator
+*_label.tif
+
+# Test fixtures too large to commit
+/testdata/fixtures/large/
+
+# Scratch / temp
+/.tmp_crossvalidate/
+*.tmp-*
+
+# Editor / OS noise
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Go build cache / test artifacts
+*.test
+*.out
+coverage.*
