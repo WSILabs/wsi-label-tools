@@ -101,7 +101,7 @@ def validate_one(
     sample: Path,
     label: Path,
     tmpdir: Path,
-    tiffinfo: str,
+    tiffinfo: str | None,
 ) -> tuple[bool, str]:
     out = tmpdir / f"out_{sample.name}"
     result = subprocess.run(
@@ -111,10 +111,11 @@ def validate_one(
     if result.returncode not in (0, 10):
         return False, f"wsi-label exit {result.returncode}: {result.stderr.decode().strip()}"
 
-    # 1. libtiff strict decode.
-    ok, msg = tiffinfo_decodes_cleanly(tiffinfo, out)
-    if not ok:
-        return False, msg
+    # 1. libtiff strict decode (skipped if tiffinfo isn't installed).
+    if tiffinfo:
+        ok, msg = tiffinfo_decodes_cleanly(tiffinfo, out)
+        if not ok:
+            return False, msg
 
     # 2. pyramid dims unchanged.
     in_dims = pyramid_dims(sample)
@@ -151,11 +152,16 @@ def main() -> int:
     tiffinfo = shutil.which("tiffinfo")
     if not tiffinfo:
         print(
-            "ERROR: 'tiffinfo' not on PATH. Install libtiff-tools "
-            "(apt: libtiff-tools, brew: libtiff).",
+            "WARNING: 'tiffinfo' not on PATH — skipping the strict libtiff\n"
+            "         decode check. openslide + pyramid-dims checks will\n"
+            "         still run, but TIFF-spec violations that openslide\n"
+            "         silently accepts (e.g., non-conforming LZW streams)\n"
+            "         will not be caught. Install with:\n"
+            "           apt-get install libtiff-tools       # Debian/Ubuntu\n"
+            "           brew install libtiff                # macOS\n"
+            "           dnf install libtiff-tools           # Fedora\n",
             file=sys.stderr,
         )
-        return 2
 
     TMP.mkdir(exist_ok=True)
     label = make_label(TMP)
@@ -173,7 +179,8 @@ def main() -> int:
         if not ok:
             failures += 1
 
-    print(f"\n{len(samples) - failures}/{len(samples)} samples passed.")
+    coverage = "full" if tiffinfo else "DEGRADED (no tiffinfo — libtiff strict check skipped)"
+    print(f"\n{len(samples) - failures}/{len(samples)} samples passed. Coverage: {coverage}")
     return 1 if failures else 0
 
 
