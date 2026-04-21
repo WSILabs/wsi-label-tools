@@ -26,6 +26,7 @@ CLI for replacing or stripping the label image inside whole-slide image files. A
 | 5    | File has unexpected TIFF layout; refusing to proceed. |
 | 10   | Success, but label was added rather than replaced. |
 
-## Design
+## Design & Roadmap
 
-See `docs/superpowers/specs/2026-04-20-wsi-label-design.md`.
+- Design: `docs/superpowers/specs/2026-04-20-wsi-label-design.md`
+- Roadmap: `docs/ROADMAP.md`
