@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel in-flight runs on the same ref when a new commit lands.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# No user-controllable inputs from github.event.* are used in any `run:`
+# block. The only expression interpolation (github.ref above) is a
+# repository-controlled ref name used as a concurrency key, not a shell
+# argument.
+
+jobs:
+  test:
+    name: build, test, cross-validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build -o wsi-label ./cmd/wsi-label
+
+      - name: go test
+        run: go test ./... -count=1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system deps for cross-validation
+        # libtiff-tools: provides tiffinfo, which gates the strict libtiff
+        #                decode check (catches LZW-variant bugs that openslide
+        #                silently accepts).
+        # libopenslide0: shared library. Modern openslide-python wheels bundle
+        #                their own copy, but installing the OS package keeps us
+        #                compatible with older wheel builds too.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libtiff-tools libopenslide0
+
+      - name: Install Python deps
+        run: |
+          pip install --upgrade pip
+          pip install openslide-python tifffile numpy pillow
+
+      - name: Cross-validate
+        run: python scripts/cross_validate.py ./wsi-label
+
+# To extend validation to the full OpenSlide demo corpus (larger files,
+# JPEG2000 variants) on-demand, add a second workflow triggered by
+# workflow_dispatch that fetches from https://openslide.cs.cmu.edu/...
+# into sample_svs/ before the cross-validate step. Kept out of the default
+# workflow so PR runs stay fast.
