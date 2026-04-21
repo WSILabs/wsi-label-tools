@@ -3,6 +3,9 @@
 /wsi-label.exe
 /bin/
 
+# goreleaser output
+/dist/
+
 # Python bytecode
 __pycache__/
 *.pyc
