@@ -1,0 +1,83 @@
+# GoReleaser config — https://goreleaser.com
+# Triggered from .github/workflows/release.yml on `v*.*.*` tag push.
+version: 2
+
+project_name: wsi-label
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: wsi-label
+    binary: wsi-label
+    main: ./cmd/wsi-label
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      # Windows-arm64 is niche; skip until asked for.
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .CommitDate }}
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+      - label-slides.py
+      - sample_svs/README.md
+
+checksum:
+  name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-SNAPSHOT-{{ .ShortCommit }}'
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+      - 'merge conflict'
+      - Merge pull request
+      - Merge branch
+
+release:
+  draft: false
+  prerelease: auto
+  name_template: '{{ .ProjectName }} {{ .Tag }}'
+  footer: |
+    ## Install
+
+    Download the archive for your platform above, extract, and move the
+    `wsi-label` binary onto your `PATH`.
+
+    **Verify:**
+
+        sha256sum -c wsi-label_{{ .Version }}_checksums.txt

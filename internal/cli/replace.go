@@ -14,8 +14,8 @@ import (
 
 	_ "golang.org/x/image/tiff"
 
-	"github.com/tcornish/wsi-label/internal/aperio"
-	"github.com/tcornish/wsi-label/internal/wsi"
+	"github.com/cornish/wsi-label-tools/internal/aperio"
+	"github.com/cornish/wsi-label-tools/internal/wsi"
 )
 
 func RunReplace(args []string, stdout, stderr io.Writer) error {

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/tcornish/wsi-label/internal/wsi"
+	"github.com/cornish/wsi-label-tools/internal/wsi"
 )
 
 func svsSample(t *testing.T, name string) string {

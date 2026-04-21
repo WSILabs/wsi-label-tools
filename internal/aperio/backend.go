@@ -5,8 +5,8 @@ import (
 	"image"
 	"os"
 
-	"github.com/tcornish/wsi-label/internal/tifflow"
-	"github.com/tcornish/wsi-label/internal/wsi"
+	"github.com/cornish/wsi-label-tools/internal/tifflow"
+	"github.com/cornish/wsi-label-tools/internal/wsi"
 )
 
 type backend struct{}

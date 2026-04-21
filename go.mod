@@ -1,4 +1,4 @@
-module github.com/tcornish/wsi-label
+module github.com/cornish/wsi-label-tools
 
 go 1.26.1
 

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tcornish/wsi-label/internal/tifflow"
+	"github.com/cornish/wsi-label-tools/internal/tifflow"
 )
 
 // For each sample SVS in sample_svs/, run replace with a synthetic label and

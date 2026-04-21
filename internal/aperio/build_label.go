@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"image"
 
-	"github.com/tcornish/wsi-label/internal/tifflow"
+	"github.com/cornish/wsi-label-tools/internal/tifflow"
 )
 
 // BuildLabelIFD produces a ReplacementIFD for the given 1200×848 RGB image.

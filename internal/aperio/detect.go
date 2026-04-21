@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/tcornish/wsi-label/internal/tifflow"
+	"github.com/cornish/wsi-label-tools/internal/tifflow"
 )
 
 // Detect returns true if the file at path is an Aperio SVS.

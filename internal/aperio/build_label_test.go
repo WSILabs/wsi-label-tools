@@ -5,7 +5,7 @@ import (
 	"image/color"
 	"testing"
 
-	"github.com/tcornish/wsi-label/internal/tifflow"
+	"github.com/cornish/wsi-label-tools/internal/tifflow"
 )
 
 func TestBuildLabelIFD(t *testing.T) {

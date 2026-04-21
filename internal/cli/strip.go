@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/tcornish/wsi-label/internal/aperio"
+	"github.com/cornish/wsi-label-tools/internal/aperio"
 )
 
 func RunStrip(args []string, stdout, stderr io.Writer) error {

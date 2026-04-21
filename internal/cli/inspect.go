@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/tcornish/wsi-label/internal/tifflow"
+	"github.com/cornish/wsi-label-tools/internal/tifflow"
 )
 
 func RunInspect(args []string, stdout, stderr io.Writer) error {
