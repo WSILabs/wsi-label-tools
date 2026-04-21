@@ -82,7 +82,7 @@ jobs:
       - name: Install Python deps
         run: |
           pip install --upgrade pip
-          pip install openslide-python tifffile numpy pillow
+          pip install openslide-python tifffile imagecodecs numpy pillow
 
       - name: Cross-validate
         run: python scripts/cross_validate.py ./wsi-label

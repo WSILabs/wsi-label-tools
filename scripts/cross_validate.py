@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Cross-validate wsi-label output against external readers.
 
-For each sample SVS in sample_svs/, runs `wsi-label replace` with a synthetic
-label and then performs three independent checks:
+For each sample SVS in sample_svs/, runs `wsi-label replace --resize=none`
+with a synthetic 1200x848 label and then performs four independent checks:
 
   1. libtiff strict decode (tiffinfo -D): opens every IFD AND decodes every
      strip/tile. Fails on warnings like "Using code not yet in table", which
@@ -15,6 +15,11 @@ label and then performs three independent checks:
   3. openslide associated-image lookup: asserts the output has a "label"
      associated image that is non-empty and non-uniform (not black, not
      all-background-color).
+
+  4. Pixel-exact label round-trip via tifffile: decodes the label IFD and
+     compares it to the original input label bytes. LZW + predictor-2 is
+     lossless, and writing at the exact target dims with --resize=none
+     means no resampling; any pixel drift is a real decoder bug.
 
   Usage:
       python scripts/cross_validate.py path/to/wsi-label
@@ -57,13 +62,36 @@ def pyramid_dims(path: Path) -> list[tuple[int, int]]:
         ]
 
 
-def make_label(tmpdir: Path) -> Path:
-    # Non-uniform content so we can detect silent all-zero decode output.
+def make_label(tmpdir: Path) -> tuple[Path, np.ndarray]:
+    """Build a synthetic 1200x848 RGB label (Aperio's exact target dims).
+
+    Writing at target dims means --resize=none is valid and the encode/
+    decode round-trip is bit-exact lossless (LZW + predictor 2). The
+    returned array is the ground truth we'll compare the decoded output
+    label against.
+    """
     rng = np.random.default_rng(42)
-    arr = rng.integers(0, 256, size=(400, 600, 3), dtype=np.uint8)
+    arr = rng.integers(0, 256, size=(848, 1200, 3), dtype=np.uint8)
     p = tmpdir / "label.png"
     Image.fromarray(arr).save(p)
-    return p
+    return p, arr
+
+
+def read_label_pixels(path: Path) -> np.ndarray | None:
+    """Decode the label IFD's pixels via tifffile and return them as an array.
+
+    Finds the IFD whose ImageDescription second line starts with 'label'.
+    Returns None if no such IFD exists.
+    """
+    with tifffile.TiffFile(str(path)) as tf:
+        for page in tf.pages:
+            desc = page.tags.get("ImageDescription")
+            if desc is None:
+                continue
+            lines = str(desc.value).splitlines()
+            if len(lines) >= 2 and lines[1].startswith("label"):
+                return page.asarray()
+    return None
 
 
 def tiffinfo_decodes_cleanly(tiffinfo: str, path: Path) -> tuple[bool, str]:
@@ -100,12 +128,18 @@ def validate_one(
     exe: Path,
     sample: Path,
     label: Path,
+    label_truth: np.ndarray,
     tmpdir: Path,
     tiffinfo: str | None,
 ) -> tuple[bool, str]:
     out = tmpdir / f"out_{sample.name}"
+    # --resize=none forces the "exact target dims" path so the round-trip
+    # through LZW + predictor-2 is bit-exact lossless.
     result = subprocess.run(
-        [str(exe), "replace", "--overwrite", str(sample), str(label), str(out)],
+        [
+            str(exe), "replace", "--overwrite", "--resize", "none",
+            str(sample), str(label), str(out),
+        ],
         capture_output=True,
     )
     if result.returncode not in (0, 10):
@@ -137,6 +171,21 @@ def validate_one(
     finally:
         slide.close()
 
+    # 4. Pixel-exact label round-trip via tifffile's independent decoder.
+    #    Since we wrote the label at exact target dims with --resize=none,
+    #    LZW + predictor-2 round-trips losslessly.
+    decoded = read_label_pixels(out)
+    if decoded is None:
+        return False, "no label IFD found by tifffile"
+    if decoded.shape != label_truth.shape:
+        return False, f"label shape {decoded.shape} != truth {label_truth.shape}"
+    if not np.array_equal(decoded, label_truth):
+        diff = np.abs(decoded.astype(int) - label_truth.astype(int))
+        return False, (
+            f"label pixels differ from input: max |Δ|={diff.max()}, "
+            f"mean |Δ|={diff.mean():.2f}, {(diff != 0).sum()} pixels off"
+        )
+
     return True, "ok"
 
 
@@ -164,7 +213,7 @@ def main() -> int:
         )
 
     TMP.mkdir(exist_ok=True)
-    label = make_label(TMP)
+    label, label_truth = make_label(TMP)
 
     samples = sorted(SAMPLES.glob("*.svs"))
     if not samples:
@@ -173,7 +222,7 @@ def main() -> int:
 
     failures = 0
     for s in samples:
-        ok, msg = validate_one(exe, s, label, TMP, tiffinfo)
+        ok, msg = validate_one(exe, s, label, label_truth, TMP, tiffinfo)
         status = "OK " if ok else "FAIL"
         print(f"[{status}] {s.name}: {msg}")
         if not ok:
