@@ -63,10 +63,19 @@ try:
 except ImportError:
     _QUESTIONARY_OK = False
 
-# Aperio label dimensions. The wsi-label tool will resize any input, but
-# producing exact dimensions skips a resize pass and keeps text crisp.
-LABEL_W = 1200
-LABEL_H = 848
+# Default label dimensions when the SVS has no existing label. For files
+# that DO have one, we query wsi-label for the actual dims so the rendered
+# text is sized to the slot it'll be written into (no resampling, no text
+# overflow after resize).
+DEFAULT_LABEL_W = 1200
+DEFAULT_LABEL_H = 848
+
+# Minimum font size before we give up trying to shrink to fit and accept
+# that the line just won't fit.
+MIN_FONT_SIZE = 10
+
+# Margin inside the border when fitting text.
+TEXT_MARGIN = 24
 
 # Aperio label background (parchment); matches wsi-label's default.
 LABEL_BG = (245, 245, 230)
@@ -102,6 +111,25 @@ class RunResult:
 # ---------------------------------------------------------------------------
 # wsi-label binary discovery
 # ---------------------------------------------------------------------------
+
+
+def query_label_dims(wsi_label: Path, svs: Path) -> tuple[int, int] | None:
+    """Ask wsi-label for the existing label's dimensions. Returns None if
+    the file has no label IFD or the binary fails."""
+    proc = subprocess.run(
+        [str(wsi_label), "label-dims", str(svs)],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        return None
+    out = proc.stdout.strip()
+    if "x" not in out:
+        return None
+    try:
+        w_s, h_s = out.split("x", 1)
+        return int(w_s), int(h_s)
+    except ValueError:
+        return None
 
 
 def find_wsi_label() -> Path:
@@ -148,36 +176,98 @@ def load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def render_label(lines: Sequence[str], rotate: bool) -> Image.Image:
-    """Render label text centered on a 1200×848 RGB canvas."""
+def _fit_font(
+    lines: Sequence[str],
+    draw: ImageDraw.ImageDraw,
+    avail_w: int,
+    avail_h: int,
+) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, int]:
+    """Find the largest font size where every line fits horizontally
+    and the stack fits vertically, within (avail_w, avail_h).
+    """
     if not lines:
         lines = ["(blank)"]
-
-    img = Image.new("RGB", (LABEL_W, LABEL_H), LABEL_BG)
-    draw = ImageDraw.Draw(img)
-    draw.rectangle([(8, 8), (LABEL_W - 9, LABEL_H - 9)], outline=LABEL_FG, width=3)
-
-    # Font size heuristic: fill ~75% of height, divided among lines.
     n = len(lines)
-    target_line_h = max(24, int((LABEL_H * 0.75) / n))
-    font = load_font(target_line_h)
+    # Start from "fills vertical space" and shrink until every line fits
+    # horizontally too. Binary search would be faster but this is fine
+    # for a handful of lines.
+    upper = max(MIN_FONT_SIZE, min(400, avail_h // max(n, 1)))
+    line_gap = 12
+    for size in range(upper, MIN_FONT_SIZE - 1, -1):
+        font = load_font(size)
+        heights: list[int] = []
+        max_w = 0
+        for line in lines:
+            bbox = draw.textbbox((0, 0), line, font=font)
+            w = bbox[2] - bbox[0]
+            h = bbox[3] - bbox[1]
+            heights.append(h)
+            if w > max_w:
+                max_w = w
+        total_h = sum(heights) + line_gap * (n - 1)
+        if max_w <= avail_w and total_h <= avail_h:
+            return font, size
+    return load_font(MIN_FONT_SIZE), MIN_FONT_SIZE
 
-    heights: list[int] = []
-    total_h = 0
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        h = bbox[3] - bbox[1]
-        heights.append(h)
-        total_h += h
-    total_h += 12 * (n - 1)
 
-    y = (LABEL_H - total_h) // 2
+def _render_horizontal(
+    lines: Sequence[str],
+    width: int,
+    height: int,
+) -> Image.Image:
+    """Render text horizontally, centered, on a width×height canvas."""
+    if not lines:
+        lines = ["(blank)"]
+    img = Image.new("RGB", (width, height), LABEL_BG)
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([(8, 8), (width - 9, height - 9)], outline=LABEL_FG, width=3)
+
+    avail_w = max(10, width - 2 * TEXT_MARGIN)
+    avail_h = max(10, height - 2 * TEXT_MARGIN)
+    font, _ = _fit_font(lines, draw, avail_w, avail_h)
+
+    heights = [draw.textbbox((0, 0), line, font=font)[3] - draw.textbbox((0, 0), line, font=font)[1] for line in lines]
+    line_gap = 12
+    total_h = sum(heights) + line_gap * (len(lines) - 1)
+
+    y = (height - total_h) // 2
     for line, h in zip(lines, heights):
         bbox = draw.textbbox((0, 0), line, font=font)
         w = bbox[2] - bbox[0]
-        x = (LABEL_W - w) // 2
+        x = (width - w) // 2
         draw.text((x - bbox[0], y - bbox[1]), line, fill=LABEL_FG, font=font)
-        y += h + 12
+        y += h + line_gap
+    return img
+
+
+def render_label(
+    lines: Sequence[str],
+    rotate: bool,
+    width: int = DEFAULT_LABEL_W,
+    height: int = DEFAULT_LABEL_H,
+) -> Image.Image:
+    """Render label text to fit a width×height RGB canvas.
+
+    For portrait targets (height > width), text is first rendered on a
+    landscape canvas (height×width), then rotated 90° to land at
+    width×height. This makes the text run along the LONG axis of the
+    physical label — matching how real slide labels are printed.
+
+    `rotate=True` applies an extra 180° rotation at the end (for scanner
+    conventions that store labels "upside-down" relative to reading).
+    Default is False in CLI, since most modern scanners don't need it.
+    """
+    if height > width:
+        # Portrait target: render horizontally on a landscape canvas
+        # sized (height, width), then rotate 90° CCW so the long side
+        # becomes vertical.
+        landscape = _render_horizontal(lines, height, width)
+        img = landscape.rotate(90, expand=True)
+        # Sanity: after rotate(90, expand=True), image is (width, height).
+        if img.size != (width, height):
+            img = img.resize((width, height))
+    else:
+        img = _render_horizontal(lines, width, height)
 
     if rotate:
         img = img.rotate(180)
@@ -437,11 +527,20 @@ def run_one(
             cmd.append("--overwrite")
         cmd += [str(job.svs_in), str(job.svs_out)]
     else:
-        img = render_label(job.lines, rotate=rotate)
+        # Match the PNG canvas to the existing label's dimensions so text
+        # is fit once (to the slot we'll actually write into) and wsi-label
+        # can use --resize=none. Fall back to the canonical 1200x848 when
+        # the SVS has no existing label (add-label path).
+        dims = query_label_dims(wsi_label, job.svs_in)
+        if dims is None:
+            width, height = DEFAULT_LABEL_W, DEFAULT_LABEL_H
+        else:
+            width, height = dims
+        img = render_label(job.lines, rotate=rotate, width=width, height=height)
         # Unique per-job temp PNG (enables parallel execution without collisions).
         png_path = tmpdir / f"{job.svs_in.stem}.label.png"
         img.save(png_path, format="PNG")
-        cmd = [str(wsi_label), "replace"]
+        cmd = [str(wsi_label), "replace", "--resize", "none"]
         if overwrite:
             cmd.append("--overwrite")
         cmd += [str(job.svs_in), str(png_path), str(job.svs_out)]
@@ -564,8 +663,10 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("auto", "yes", "no"),
         default="auto",
         help=(
-            "Rotate label 180° to match typical Aperio orientation. "
-            "'auto' asks in interactive mode, defaults to yes otherwise."
+            "Rotate label 180° after rendering (for scanner conventions "
+            "that store labels upside-down). 'auto' asks in interactive "
+            "mode, defaults to NO otherwise. Most modern scanners don't "
+            "need this."
         ),
     )
     p.add_argument(
@@ -621,8 +722,8 @@ def resolve_rotate(choice: str, interactive: bool) -> bool:
         return False
     # auto
     if interactive:
-        return yesno("Rotate labels 180° for typical Aperio orientation?", "y")
-    return True
+        return yesno("Rotate labels 180° (old scanner convention)?", "n")
+    return False
 
 
 def print_summary(jobs: Sequence[Job], rotate: bool) -> None:

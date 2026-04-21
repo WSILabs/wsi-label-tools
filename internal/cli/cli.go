@@ -20,6 +20,8 @@ func Run(args []string, stdout, stderr io.Writer) error {
 		return RunReplace(rest, stdout, stderr)
 	case "strip":
 		return RunStrip(rest, stdout, stderr)
+	case "label-dims":
+		return RunLabelDims(rest, stdout, stderr)
 	case "-h", "--help", "help":
 		printUsage(stdout)
 		return nil
@@ -33,9 +35,10 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, `wsi-label — replace or strip the label image in WSI files
 
 Usage:
-  wsi-label replace <wsi-in> <label-image> [<wsi-out>] [flags]
-  wsi-label strip   <wsi-in>               [<wsi-out>] [flags]
-  wsi-label inspect <wsi-in>                           [flags]
+  wsi-label replace    <wsi-in> <label-image> [<wsi-out>] [flags]
+  wsi-label strip      <wsi-in>               [<wsi-out>] [flags]
+  wsi-label inspect    <wsi-in>                           [flags]
+  wsi-label label-dims <wsi-in>                                  (prints WxH)
 
 Run 'wsi-label <subcommand> -h' for subcommand flags.`)
 }
