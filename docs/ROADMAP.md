@@ -16,26 +16,18 @@ whatever order the real workload demands.
 Work that closes out the original spec and produces the first published
 binaries.
 
-- [ ] **Cut `v0.1.0`.** `git tag v0.1.0 && git push origin v0.1.0`. Verifies
-  the goreleaser pipeline end-to-end and puts downloadable Linux/macOS/Windows
-  binaries on the Releases page. Small risk: `goreleaser` is only exercised
-  for the first time here, so watch the Actions run. If it fails, iterate on
-  a `v0.1.0-rc1` tag and re-tag.
-- [ ] **Windows/macOS build coverage in CI.** Today `ci.yml` only runs on
-  `ubuntu-latest`. Add a matrix that does `go build` on `windows-latest` and
-  `macos-latest` (tests can stay Linux-only — goreleaser cross-compiles
-  from Linux, this is a cheap smoke check that platform-specific code
-  paths still compile). Catches regressions before they land in a tag.
-- [ ] **Wire the deferred replace flags.** `--bg=RRGGBB`, `--rotate=0|90|180|270`,
-  `--resize=fit|stretch|none`, `--force`. All parsed today in
-  `internal/cli/replace.go` but not threaded into `aperio.backend.ReplaceLabel`.
-  Modest UX gain with low implementation cost.
-- [ ] **Strengthen `cross_validate.py` label-pixel check.** Currently asserts
-  non-trivial variance. Upgrade to: decode the output label via libtiff,
-  compare to the input label after the known aspect-fit resize + Aperio BG
-  letterbox, require pixel equality within a small tolerance (LZW is
-  lossless but resize interpolation isn't bit-exact across runs). Would
-  pin the LZW class-of-bug fix definitively.
+- [x] **Cut `v0.1.0`.** Shipped 2026-04-21. Five platform archives published
+  on the Releases page. Goreleaser pipeline exercised end-to-end successfully.
+- [x] **Windows/macOS build coverage in CI.** `ci.yml` now runs a three-OS
+  build matrix in addition to the Linux test+cross-validate job.
+- [x] **Wire the deferred replace flags.** `--bg`, `--rotate`, `--resize`,
+  `--force` now threaded through `wsi.ReplaceOptions` into
+  `aperio.PrepareLabel`. Aspect-mismatch check rejects >2× ratios without
+  `--force`.
+- [x] **Strengthen `cross_validate.py` label-pixel check.** Now writes the
+  test label at exact target dims, runs `wsi-label replace --resize=none`,
+  decodes the output label via tifffile, and requires `numpy.array_equal`
+  against the input. Pixel-exact round-trip confirmed for LZW+predictor-2.
 
 ## Pathology workflow features (days)
 
