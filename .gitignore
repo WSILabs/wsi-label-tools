@@ -7,8 +7,9 @@
 __pycache__/
 *.pyc
 
-# Claude Code local settings
+# Claude Code local settings + personal project notes
 /.claude/
+/CLAUDE.md
 
 # Sample WSI files: directory contents are ignored by default because real
 # slide files may carry sensitive label text. Exception: the small public
