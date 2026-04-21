@@ -2,10 +2,11 @@ package aperio
 
 import (
 	"bytes"
-	"compress/lzw"
 	"image"
 	"image/color"
 	"testing"
+
+	"github.com/hhrutter/lzw"
 )
 
 func TestEncodeStrip_RoundTrip(t *testing.T) {
@@ -21,7 +22,7 @@ func TestEncodeStrip_RoundTrip(t *testing.T) {
 	compressed := encodeLZW(pre)
 
 	// Decode and undo predictor.
-	dec := lzw.NewReader(bytes.NewReader(compressed), lzw.MSB, 8)
+	dec := lzw.NewReader(bytes.NewReader(compressed), true)
 	defer dec.Close()
 	decoded := make([]byte, len(pre))
 	if _, err := io_readFull(dec, decoded); err != nil {

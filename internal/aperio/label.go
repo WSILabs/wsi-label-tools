@@ -2,9 +2,10 @@ package aperio
 
 import (
 	"bytes"
-	"compress/lzw"
 	"image"
 	"image/color"
+
+	"github.com/hhrutter/lzw"
 )
 
 // Target dimensions for Aperio SVS labels.
@@ -56,10 +57,16 @@ func applyPredictor2(rgb []byte, w, h int) []byte {
 	return out
 }
 
-// encodeLZW compresses data with TIFF-flavored LZW (MSB order, 8-bit literal).
+// encodeLZW compresses data with TIFF 6.0 flavored LZW.
+//
+// Uses github.com/hhrutter/lzw with oneOff=true (the "early-change" variant
+// libtiff and Pillow produce). Go stdlib compress/lzw in MSB mode is close
+// but not byte-for-byte compatible; libtiff decodes a stdlib stream with a
+// "Using code not yet in table" warning that propagates to strict callers
+// like TIFFRGBAImageGet.
 func encodeLZW(data []byte) []byte {
 	var buf bytes.Buffer
-	w := lzw.NewWriter(&buf, lzw.MSB, 8)
+	w := lzw.NewWriter(&buf, true)
 	_, _ = w.Write(data)
 	_ = w.Close()
 	return buf.Bytes()
