@@ -18,11 +18,33 @@ concurrency:
 # argument.
 
 jobs:
+  # Cross-platform compile smoke test. Fast: only `go build`, no tests,
+  # no system deps. Catches platform-specific regressions before a tag
+  # triggers goreleaser.
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go build ./...
+
+  # Full Linux run: vet, tests, and cross-validation against the committed
+  # CMU fixture. Only Linux because (a) tiffinfo + openslide system deps
+  # are packaged cleanly there, and (b) Go is cross-platform by design —
+  # the matrix job above covers compile-time platform issues.
   test:
-    name: build, test, cross-validate
+    name: test + cross-validate (linux)
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     steps:
       - uses: actions/checkout@v4
 
