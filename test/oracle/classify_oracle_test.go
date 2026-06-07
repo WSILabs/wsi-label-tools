@@ -26,6 +26,7 @@ var corpus = []struct {
 	{"svs", ".svs"},
 	{"generic-tiff", ".tiff"},
 	{"philips-tiff", ".tiff"},
+	{"ndpi", ".ndpi"},
 }
 
 // hasLabelOurs reports whether our classifier finds a RoleLabel target.

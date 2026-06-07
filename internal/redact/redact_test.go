@@ -213,3 +213,112 @@ func assertPrefixIdentical(t *testing.T, in, out string) {
 		}
 	}
 }
+
+func TestNDPI_StripAndReplace(t *testing.T) {
+	src := filepath.Join("..", "..", "sample_files", "ndpi", "CMU-1.ndpi")
+	if _, err := os.Stat(src); err != nil {
+		t.Skipf("fixture absent: %v", err)
+	}
+
+	// strip: blank the label region of the macro; output must re-open and the
+	// label region (macro) must still resolve.
+	stripOut := filepath.Join(t.TempDir(), "stripped.ndpi")
+	if err := redact.Strip(src, stripOut, false); err != nil {
+		t.Fatalf("Strip: %v", err)
+	}
+	if _, _, err := redact.LabelDims(stripOut); err != nil {
+		t.Fatalf("LabelDims(stripped) failed — output not re-openable: %v", err)
+	}
+	assertNDPIPyramidIdentical(t, src, stripOut)
+	assertMacroChanged(t, src, stripOut)
+
+	// replace: composite a test label into the region.
+	repOut := filepath.Join(t.TempDir(), "relabeled.ndpi")
+	if _, err := redact.Replace(src, repOut, redact.ReplaceOptions{Image: newTestLabel()}); err != nil {
+		t.Fatalf("Replace: %v", err)
+	}
+	assertNDPIPyramidIdentical(t, src, repOut)
+	assertMacroChanged(t, src, repOut)
+}
+
+// assertMacroChanged verifies the macro strip bytes differ (redaction occurred).
+func assertMacroChanged(t *testing.T, in, out string) {
+	t.Helper()
+	readMacro := func(path string) []byte {
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		file, err := tifflow.Parse(f)
+		if err != nil {
+			t.Fatalf("parse: %v", err)
+		}
+		for _, ifd := range file.IFDs {
+			if mag, ok := ifd.FloatValue(65421, file.Header.ByteOrder); ok && mag == -1.0 {
+				offs, _ := ifd.UintArray(tifflow.TagStripOffsets, file.Header.ByteOrder)
+				cnts, _ := ifd.UintArray(tifflow.TagStripByteCounts, file.Header.ByteOrder)
+				if len(offs) == 1 && len(cnts) == 1 {
+					b := make([]byte, cnts[0])
+					if _, err := f.ReadAt(b, int64(offs[0])); err != nil {
+						t.Fatal(err)
+					}
+					return b
+				}
+			}
+		}
+		t.Fatal("macro strip not found")
+		return nil
+	}
+	if bytes.Equal(readMacro(in), readMacro(out)) {
+		t.Fatalf("macro strip unchanged — redaction did not modify the macro")
+	}
+}
+
+// assertNDPIPyramidIdentical verifies the prefix up to the macro strip is
+// byte-identical (the pyramid was not touched by the region edit).
+func assertNDPIPyramidIdentical(t *testing.T, in, out string) {
+	t.Helper()
+	fIn, err := os.Open(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fIn.Close()
+	file, err := tifflow.Parse(fIn)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	var cutoff uint64
+	for _, ifd := range file.IFDs {
+		mag, ok := ifd.FloatValue(65421, file.Header.ByteOrder)
+		if ok && mag == -1.0 {
+			continue // skip the macro itself
+		}
+		offs, o := ifd.UintArray(tifflow.TagStripOffsets, file.Header.ByteOrder)
+		cnts, c := ifd.UintArray(tifflow.TagStripByteCounts, file.Header.ByteOrder)
+		if o && c && len(offs) == 1 && len(cnts) == 1 {
+			if end := offs[0] + cnts[0]; end > cutoff {
+				cutoff = end
+			}
+		}
+	}
+	if cutoff == 0 {
+		t.Skip("no pyramid strips located")
+	}
+	inB := make([]byte, cutoff)
+	if _, err := fIn.ReadAt(inB, 0); err != nil {
+		t.Fatal(err)
+	}
+	fOut, err := os.Open(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fOut.Close()
+	outB := make([]byte, cutoff)
+	if _, err := fOut.ReadAt(outB, 0); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(inB, outB) {
+		t.Fatalf("pyramid prefix [0,%d) differs after NDPI region redaction", cutoff)
+	}
+}
