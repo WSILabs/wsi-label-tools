@@ -19,15 +19,29 @@ type Classifier interface {
 	DefaultLabelBG() color.RGBA
 }
 
-var classifiers []Classifier
+var (
+	classifiers []Classifier // vendor classifiers, tried first
+	fallbacks   []Classifier // greedy classifiers (e.g. generic-TIFF), tried last
+)
 
-// Register adds a classifier to the registry. Format packages call this from
-// init(); the binary blank-imports those packages to trigger registration.
+// Register adds a vendor classifier. Format packages call this from init();
+// the binary blank-imports those packages to trigger registration.
 func Register(c Classifier) { classifiers = append(classifiers, c) }
 
-// detectClassifier returns the first registered classifier that matches.
+// RegisterFallback adds a classifier that is only consulted after every
+// vendor classifier has declined. Used by greedy matchers like generic-TIFF
+// that would otherwise shadow more specific formats.
+func RegisterFallback(c Classifier) { fallbacks = append(fallbacks, c) }
+
+// detectClassifier returns the first vendor classifier that matches, else the
+// first matching fallback.
 func detectClassifier(file *tifflow.File) (Classifier, bool) {
 	for _, c := range classifiers {
+		if c.Detect(file) {
+			return c, true
+		}
+	}
+	for _, c := range fallbacks {
 		if c.Detect(file) {
 			return c, true
 		}
