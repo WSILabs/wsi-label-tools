@@ -559,7 +559,21 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int, override [][]byte
 			}
 		}
 		entry := findEntry(ifd, stripTag)
-		if entry != nil && (entry.Type == TypeLong8 || entry.Type == TypeIFD8) {
+		// In the override path, normalize the offsets/counts to a wide type
+		// (LONG for classic, LONG8 for BigTIFF) so the declared entry type
+		// always matches the value-blob width. This avoids corruption when the
+		// original entry used SHORT (2-byte) values and also handles new strip
+		// lengths/offsets that exceed what SHORT could hold. The nil-override
+		// path must remain byte-for-byte identical, so it keeps mirroring the
+		// original entry's width.
+		wide8 := false
+		switch {
+		case override != nil:
+			wide8 = h.BigTIFF
+		case entry != nil && (entry.Type == TypeLong8 || entry.Type == TypeIFD8):
+			wide8 = true
+		}
+		if wide8 {
 			newOffsetsBuf = make([]byte, 8*len(newOffsets))
 			for i, v := range newOffsets {
 				h.ByteOrder.PutUint64(newOffsetsBuf[i*8:], v)
@@ -582,8 +596,10 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int, override [][]byte
 	// here if it doesn't fit in the value field.
 	var newCountsBuf []byte
 	if override != nil && newCounts != nil {
-		countEntry := findEntry(ifd, countTag)
-		if countEntry != nil && (countEntry.Type == TypeLong8 || countEntry.Type == TypeIFD8) {
+		// Normalize byte counts to the same wide type used for the offsets so
+		// the declared entry type matches the value-blob width regardless of the
+		// original (possibly SHORT) type, and so new counts above 65535 fit.
+		if h.BigTIFF {
 			newCountsBuf = make([]byte, 8*len(newCounts))
 			for i, v := range newCounts {
 				h.ByteOrder.PutUint64(newCountsBuf[i*8:], v)
@@ -646,9 +662,21 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int, override [][]byte
 	} else {
 		_ = binary.Write(out, h.ByteOrder, uint16(len(ifd.Entries)))
 	}
+	// In the override path the offsets/counts value blobs are emitted at a
+	// promoted wide type (LONG classic, LONG8 BigTIFF); the corresponding entry
+	// headers must declare that same promoted type so the declared width matches
+	// the value blob. promotedType holds that type (zero otherwise).
+	promotedType := TypeLong
+	if h.BigTIFF {
+		promotedType = TypeLong8
+	}
 	for i, e := range ifd.Entries {
 		_ = binary.Write(out, h.ByteOrder, e.Tag)
-		_ = binary.Write(out, h.ByteOrder, uint16(e.Type))
+		emitType := e.Type
+		if override != nil && (e.Tag == stripTag || e.Tag == countTag) {
+			emitType = promotedType
+		}
+		_ = binary.Write(out, h.ByteOrder, uint16(emitType))
 		if h.BigTIFF {
 			_ = binary.Write(out, h.ByteOrder, e.Count)
 		} else {

@@ -211,6 +211,170 @@ func TestSpliceReplaceStripData(t *testing.T) {
 	}
 }
 
+// buildShortByteCountsTIFF hand-builds a minimal classic little-endian TIFF
+// whose StripByteCounts entry is TIFF type SHORT (3, 2 bytes) with 2 strips.
+// This exercises the override-path type-promotion fix: before the fix, the
+// override path wrote a LONG-width value blob while the entry header still
+// declared SHORT, corrupting the file.
+//
+// Layout:
+//
+//	[0]   header (8 bytes): II, 42, firstIFD=8
+//	[8]   IFD: count(2) + 8 entries*12 + next(4) = 102 bytes -> ends at 110
+//	[110] StripOffsets value blob (LONG*2 = 8 bytes, out-of-line)
+//	[118] strip 0 payload (4 bytes)
+//	[122] strip 1 payload (4 bytes)
+func buildShortByteCountsTIFF(t *testing.T, dir string) (path string, strip0, strip1 []byte) {
+	t.Helper()
+	order := binary.LittleEndian
+
+	strip0 = []byte{0x11, 0x22, 0x33, 0x44}
+	strip1 = []byte{0x55, 0x66, 0x77, 0x88}
+
+	const ifdStart = 8
+	const ifdSize = 2 + 8*12 + 4                // = 102
+	const stripOffsetsBlob = ifdStart + ifdSize // 110
+	const strip0Off = stripOffsetsBlob + 8      // 118
+	const strip1Off = strip0Off + 4             // 122
+
+	var buf bytes.Buffer
+	buf.Write([]byte{'I', 'I', 42, 0})
+	_ = binary.Write(&buf, order, uint32(ifdStart))
+
+	// Entry count.
+	_ = binary.Write(&buf, order, uint16(8))
+
+	writeEntry := func(tag uint16, typ uint16, count uint32, inlineVal uint32) {
+		_ = binary.Write(&buf, order, tag)
+		_ = binary.Write(&buf, order, typ)
+		_ = binary.Write(&buf, order, count)
+		_ = binary.Write(&buf, order, inlineVal)
+	}
+
+	// ImageWidth=2 (SHORT inline)
+	writeEntry(256, 3, 1, 2)
+	// ImageLength=1 (SHORT inline)
+	writeEntry(257, 3, 1, 1)
+	// BitsPerSample=8 (SHORT inline)
+	writeEntry(258, 3, 1, 8)
+	// Compression=1 (none) (SHORT inline)
+	writeEntry(259, 3, 1, 1)
+	// Photometric=1 (BlackIsZero) (SHORT inline)
+	writeEntry(262, 3, 1, 1)
+	// StripOffsets: LONG count=2, value -> out-of-line blob at stripOffsetsBlob
+	writeEntry(273, 4, 2, stripOffsetsBlob)
+	// StripByteCounts: *** SHORT count=2 *** inline (2*2=4 bytes fits the field):
+	// strip lengths 4 and 4 packed little-endian into the 4-byte value field.
+	{
+		_ = binary.Write(&buf, order, uint16(279))
+		_ = binary.Write(&buf, order, uint16(3)) // SHORT
+		_ = binary.Write(&buf, order, uint32(2)) // count
+		_ = binary.Write(&buf, order, uint16(len(strip0)))
+		_ = binary.Write(&buf, order, uint16(len(strip1)))
+	}
+	// RowsPerStrip=1 (SHORT inline)
+	writeEntry(278, 3, 1, 1)
+
+	// next-IFD = 0
+	_ = binary.Write(&buf, order, uint32(0))
+
+	// StripOffsets value blob (LONG*2).
+	_ = binary.Write(&buf, order, uint32(strip0Off))
+	_ = binary.Write(&buf, order, uint32(strip1Off))
+
+	// Strip payloads.
+	buf.Write(strip0)
+	buf.Write(strip1)
+
+	path = filepath.Join(dir, "short_bc.tiff")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path, strip0, strip1
+}
+
+// TestSpliceReplaceStripData_ShortByteCounts is a regression test for the
+// override-path SHORT-type corruption bug. It builds a classic TIFF with
+// SHORT-typed StripByteCounts and 2 strips, replaces the strips with longer
+// payloads via SpliceReplaceStripData, and asserts the output decodes
+// correctly (counts/offsets/bytes), which only holds once the offsets/counts
+// entries are promoted to LONG so the declared type matches the value width.
+func TestSpliceReplaceStripData_ShortByteCounts(t *testing.T) {
+	dir := t.TempDir()
+	inPath, _, _ := buildShortByteCountsTIFF(t, dir)
+
+	f, err := os.Open(inPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := Parse(f)
+	f.Close()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	// Sanity: the input really uses SHORT StripByteCounts with 2 strips.
+	bcEntry := findEntry(file.IFDs[0], TagStripByteCounts)
+	if bcEntry == nil || bcEntry.Type != TypeShort {
+		t.Fatalf("test setup: StripByteCounts type = %v, want SHORT(3)", bcEntry.Type)
+	}
+	offsIn, _ := file.IFDs[0].UintArray(TagStripOffsets, file.Header.ByteOrder)
+	if len(offsIn) != 2 {
+		t.Fatalf("test setup: want 2 strips, got %d", len(offsIn))
+	}
+
+	// New payloads of differing (and larger) lengths.
+	newStrips := [][]byte{
+		[]byte("NEW-STRIP-ZERO-0000"),
+		[]byte("NEW-STRIP-ONE"),
+	}
+	outPath := filepath.Join(dir, "out_short_bc.tiff")
+	if err := Splice(SpliceParams{
+		InPath: inPath, OutPath: outPath, File: file,
+		Mode: SpliceReplaceStripData, TargetIdx: 0, StripData: newStrips,
+	}); err != nil {
+		t.Fatalf("Splice: %v", err)
+	}
+
+	g, err := os.Open(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	out, err := Parse(g)
+	if err != nil {
+		t.Fatalf("re-parse: %v", err)
+	}
+
+	// The offsets/counts entries must now be promoted to LONG (classic).
+	bcOut := findEntry(out.IFDs[0], TagStripByteCounts)
+	if bcOut == nil || bcOut.Type != TypeLong {
+		t.Fatalf("StripByteCounts type after splice = %v, want LONG(4)", bcOut.Type)
+	}
+	soOut := findEntry(out.IFDs[0], TagStripOffsets)
+	if soOut == nil || soOut.Type != TypeLong {
+		t.Fatalf("StripOffsets type after splice = %v, want LONG(4)", soOut.Type)
+	}
+
+	offs, _ := out.IFDs[0].UintArray(TagStripOffsets, out.Header.ByteOrder)
+	cnts, _ := out.IFDs[0].UintArray(TagStripByteCounts, out.Header.ByteOrder)
+	if len(offs) != len(newStrips) || len(cnts) != len(newStrips) {
+		t.Fatalf("strip table length: offs=%d cnts=%d want %d", len(offs), len(cnts), len(newStrips))
+	}
+	for i := range newStrips {
+		if cnts[i] != uint64(len(newStrips[i])) {
+			t.Fatalf("strip %d count = %d, want %d", i, cnts[i], len(newStrips[i]))
+		}
+		got := make([]byte, cnts[i])
+		if _, err := g.ReadAt(got, int64(offs[i])); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, newStrips[i]) {
+			t.Fatalf("strip %d data = %q, want %q", i, got, newStrips[i])
+		}
+	}
+}
+
 func firstDiff(a, b []byte) int {
 	for i := 0; i < len(a) && i < len(b); i++ {
 		if a[i] != b[i] {
