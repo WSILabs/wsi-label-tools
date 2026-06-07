@@ -19,6 +19,14 @@ import (
 	"github.com/cornish/wsi-label-tools/internal/tifflow"
 )
 
+var corpus = []struct {
+	dir string // subdir under sample_files/
+	ext string
+}{
+	{"svs", ".svs"},
+	{"generic-tiff", ".tiff"},
+}
+
 // hasLabelOurs reports whether our classifier finds a RoleLabel target.
 func hasLabelOurs(t *testing.T, path string) bool {
 	t.Helper()
@@ -49,78 +57,90 @@ func hasLabelOpentile(t *testing.T, path string) bool {
 // TestLabelPresenceAgrees asserts our label detection matches opentile-go's
 // across the sample corpus.
 func TestLabelPresenceAgrees(t *testing.T) {
-	dir := filepath.Join("..", "..", "sample_files", "svs")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Skipf("no sample dir: %v", err)
-	}
-	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".svs") {
+	for _, c := range corpus {
+		c := c
+		dir := filepath.Join("..", "..", "sample_files", c.dir)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Logf("skipping %s: no sample dir: %v", c.dir, err)
 			continue
 		}
-		t.Run(e.Name(), func(t *testing.T) {
-			p := filepath.Join(dir, e.Name())
-			ours := hasLabelOurs(t, p)
-			theirs := hasLabelOpentile(t, p)
-			if ours != theirs {
-				t.Fatalf("label-presence mismatch: ours=%v opentile=%v", ours, theirs)
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), c.ext) {
+				continue
 			}
-		})
+			name := e.Name()
+			t.Run(c.dir+"/"+name, func(t *testing.T) {
+				p := filepath.Join(dir, name)
+				ours := hasLabelOurs(t, p)
+				theirs := hasLabelOpentile(t, p)
+				if ours != theirs {
+					t.Fatalf("label-presence mismatch: ours=%v opentile=%v", ours, theirs)
+				}
+			})
+		}
 	}
 }
 
-// TestLabelOffsetAgrees, where opentile-go exposes AssociatedIFDOffset (SVS),
+// TestLabelOffsetAgrees, where opentile-go exposes AssociatedIFDOffset,
 // asserts the located label IFD offset matches ours.
 func TestLabelOffsetAgrees(t *testing.T) {
-	dir := filepath.Join("..", "..", "sample_files", "svs")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Skipf("no sample dir: %v", err)
-	}
-	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".svs") {
+	for _, c := range corpus {
+		c := c
+		dir := filepath.Join("..", "..", "sample_files", c.dir)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Logf("skipping %s: no sample dir: %v", c.dir, err)
 			continue
 		}
-		t.Run(e.Name(), func(t *testing.T) {
-			p := filepath.Join(dir, e.Name())
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), c.ext) {
+				continue
+			}
+			name := e.Name()
+			t.Run(c.dir+"/"+name, func(t *testing.T) {
+				p := filepath.Join(dir, name)
 
-			s, err := ot.OpenFile(p)
-			if err != nil {
-				t.Fatalf("opentile open: %v", err)
-			}
-			defer s.Close()
-			var wantOff int64 = -1
-			for _, a := range s.Associated() {
-				if a.Type() != "label" {
-					continue
+				s, err := ot.OpenFile(p)
+				if err != nil {
+					t.Fatalf("opentile open: %v", err)
 				}
-				if off, ok := s.AssociatedIFDOffset(a); ok {
-					wantOff = off
+				defer s.Close()
+				var wantOff int64 = -1
+				for _, a := range s.Associated() {
+					if a.Type() != "label" {
+						continue
+					}
+					if off, ok := s.AssociatedIFDOffset(a); ok {
+						wantOff = off
+					}
 				}
-			}
-			if wantOff < 0 {
-				t.Skip("opentile exposes no label IFD offset for this file")
-			}
+				if wantOff < 0 {
+					t.Skip("opentile exposes no label IFD offset for this file")
+				}
 
-			f, err := os.Open(p)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer f.Close()
-			file, err := tifflow.Parse(f)
-			if err != nil {
-				t.Fatalf("tifflow parse: %v", err)
-			}
-			gotOff := labelIFDOffset(t, file)
-			if uint64(wantOff) != gotOff {
-				t.Fatalf("label IFD offset: ours=%d opentile=%d", gotOff, wantOff)
-			}
-		})
+				f, err := os.Open(p)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer f.Close()
+				file, err := tifflow.Parse(f)
+				if err != nil {
+					t.Fatalf("tifflow parse: %v", err)
+				}
+				gotOff := labelIFDOffset(t, file)
+				if uint64(wantOff) != gotOff {
+					t.Fatalf("label IFD offset: ours=%d opentile=%d", gotOff, wantOff)
+				}
+			})
+		}
 	}
 }
 
-// labelIFDOffset returns the file offset of the IFD our SVS classifier would
-// pick as the label, using the same rule as format/svs.go.
+// labelIFDOffset returns the file offset of the IFD our classifier would
+// pick as the label, using the ImageDescription second-line "label" prefix
+// rule (which applies to both Aperio SVS and the generic-TIFF fixture that
+// retains Aperio-style descriptions).
 func labelIFDOffset(t *testing.T, file *tifflow.File) uint64 {
 	t.Helper()
 	for i, ifd := range file.IFDs {

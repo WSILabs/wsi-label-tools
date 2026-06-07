@@ -97,6 +97,34 @@ func TestReplace_AllSamples(t *testing.T) {
 	}
 }
 
+func TestGenericTIFF_StripAndReplace(t *testing.T) {
+	src := filepath.Join("..", "..", "sample_files", "generic-tiff", "CMU-1-Small-Region.stripped.tiff")
+	if _, err := os.Stat(src); err != nil {
+		t.Skipf("fixture absent: %v", err)
+	}
+
+	// strip: output must have no label.
+	stripOut := filepath.Join(t.TempDir(), "stripped.tiff")
+	if err := redact.Strip(src, stripOut, false); err != nil {
+		t.Fatalf("Strip: %v", err)
+	}
+	if _, _, err := redact.LabelDims(stripOut); err == nil {
+		t.Fatalf("expected no label after strip")
+	}
+
+	// replace: output must still classify a label.
+	repOut := filepath.Join(t.TempDir(), "relabeled.tiff")
+	if _, err := redact.Replace(src, repOut, redact.ReplaceOptions{
+		Image: newTestLabel(), Resize: redact.ResizeStretch,
+	}); err != nil {
+		t.Fatalf("Replace: %v", err)
+	}
+	if _, _, err := redact.LabelDims(repOut); err != nil {
+		t.Fatalf("output has no label after replace: %v", err)
+	}
+	assertPrefixIdentical(t, src, repOut)
+}
+
 // assertPrefixIdentical verifies that the portion of the output file that was
 // copied verbatim from the input is byte-identical. The splice preserves
 // [0, cutoff) from the input, then patches the predecessor IFD's next-pointer
