@@ -107,12 +107,13 @@ Validated against an openslide-python round-trip plus a strict `tiffinfo -D` dec
 | Format | Status | Notes |
 |--------|--------|-------|
 | Aperio SVS | ✅ V1 | Classic TIFF + BigTIFF |
-| Hamamatsu NDPI | 🛣️ Roadmap | TIFF-based; reuses `internal/tifflow` |
-| Leica SCN | 🛣️ Roadmap | TIFF-based |
-| Ventana BIF | 🛣️ Roadmap | TIFF-based |
-| DICOM WSI | 🛣️ Maybe | Non-TIFF; separate engine |
-| Zeiss CZI | 🛣️ Maybe | Non-TIFF; proprietary |
-| 3DHISTECH MRXS | 🛣️ Maybe | Directory-based |
+| generic-TIFF | ✅ | tag 65080 / heuristic; pure splice |
+| Philips-TIFF | ✅ | `Software` prefix detect; pure splice (label CI fixture pending) |
+| Hamamatsu NDPI | 🛣️ Band 2 | Region strategy (decode macro, blank, re-encode) |
+| Ventana BIF | 🛣️ Band 2 | overview-role splice |
+| Leica SCN | 🛣️ Parked | overview-role + SCN-XML |
+| OME-TIFF | ❌ out of charter | SubIFD pyramid — needs file-rewrite (use wsitools) |
+| Zeiss CZI / MRXS | ❌ | non-TIFF / directory-based |
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
