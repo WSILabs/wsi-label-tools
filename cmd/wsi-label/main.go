@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/cornish/wsi-label-tools/internal/cli"
+	_ "github.com/cornish/wsi-label-tools/internal/redact/format"
 )
 
 // Build-time metadata, set via goreleaser ldflags. "dev" for local builds.

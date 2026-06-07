@@ -1,11 +1,12 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 
-	"github.com/cornish/wsi-label-tools/internal/aperio"
+	"github.com/cornish/wsi-label-tools/internal/redact"
 )
 
 func RunStrip(args []string, stdout, stderr io.Writer) error {
@@ -29,15 +30,14 @@ func RunStrip(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	b := aperio.New()
-	ok, derr := b.Detect(in)
-	if derr != nil {
-		return fmt.Errorf("%w: %v", ErrUnreadable, derr)
+	err = redact.Strip(in, out, *fsyncFlag)
+	if errors.Is(err, redact.ErrFormatUnsupported) {
+		return fmt.Errorf("%w: unrecognized WSI format", ErrFormatUnrecognized)
 	}
-	if !ok {
-		return fmt.Errorf("%w: not an Aperio SVS", ErrFormatUnrecognized)
+	if errors.Is(err, redact.ErrNoLabel) {
+		return fmt.Errorf("%w: no label IFD in %s", ErrUnreadable, in)
 	}
-	if err := b.StripLabel(in, out, *fsyncFlag); err != nil {
+	if err != nil {
 		return err
 	}
 	if !*quiet {

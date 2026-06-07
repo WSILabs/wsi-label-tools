@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"image"
@@ -15,8 +16,7 @@ import (
 
 	_ "golang.org/x/image/tiff"
 
-	"github.com/cornish/wsi-label-tools/internal/aperio"
-	"github.com/cornish/wsi-label-tools/internal/wsi"
+	"github.com/cornish/wsi-label-tools/internal/redact"
 )
 
 func RunReplace(args []string, stdout, stderr io.Writer) error {
@@ -76,16 +76,8 @@ func RunReplace(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("%w: --label-dims: %v", ErrUsage, err)
 	}
 
-	// Dispatch to aperio backend (registry has one entry today).
-	b := aperio.New()
-	ok, derr := b.Detect(in)
-	if derr != nil {
-		return fmt.Errorf("%w: %v", ErrUnreadable, derr)
-	}
-	if !ok {
-		return fmt.Errorf("%w: not an Aperio SVS", ErrFormatUnrecognized)
-	}
-	opts := wsi.ReplaceOptions{
+	// Dispatch through the format-neutral redact orchestrator.
+	opts := redact.ReplaceOptions{
 		Image:         img,
 		BG:            bgColor,
 		Rotate:        *rotate,
@@ -96,7 +88,13 @@ func RunReplace(args []string, stdout, stderr io.Writer) error {
 		TargetWidth:   tw,
 		TargetHeight:  th,
 	}
-	res, err := b.ReplaceLabel(in, out, opts)
+	res, err := redact.Replace(in, out, opts)
+	if errors.Is(err, redact.ErrFormatUnsupported) {
+		return fmt.Errorf("%w: unrecognized WSI format", ErrFormatUnrecognized)
+	}
+	if errors.Is(err, redact.ErrNoLabel) {
+		return fmt.Errorf("%w", ErrStrictReplace)
+	}
 	if err != nil {
 		return err
 	}
@@ -150,14 +148,14 @@ func parseLabelDims(s string) (int, int, error) {
 	return w, h, nil
 }
 
-func parseResizeMode(s string) (wsi.ResizeMode, error) {
+func parseResizeMode(s string) (redact.ResizeMode, error) {
 	switch strings.ToLower(s) {
 	case "fit":
-		return wsi.ResizeFit, nil
+		return redact.ResizeFit, nil
 	case "stretch":
-		return wsi.ResizeStretch, nil
+		return redact.ResizeStretch, nil
 	case "none":
-		return wsi.ResizeNone, nil
+		return redact.ResizeNone, nil
 	default:
 		return 0, fmt.Errorf("must be fit, stretch, or none; got %q", s)
 	}
