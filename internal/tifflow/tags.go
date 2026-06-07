@@ -13,6 +13,7 @@ const (
 	TagSamplesPerPixel  = 277
 	TagRowsPerStrip     = 278
 	TagStripByteCounts  = 279
+	TagSoftware         = 305
 	TagPlanarConfig     = 284
 	TagTileWidth        = 322
 	TagTileLength       = 323
@@ -22,6 +23,7 @@ const (
 	TagJPEGTables       = 347
 	TagPredictor        = 317
 	TagICCProfile       = 34675
+	TagWSIImageType     = 65080 // wsitools/COG-WSI private: ASCII role ("label"/"overview"/...)
 )
 
 // TIFF tag types (TIFF 6.0 + BigTIFF extensions).
