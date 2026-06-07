@@ -48,9 +48,12 @@ scanners and which PHI exposures you actually encounter.
   path validated locally (only the 3.1 GB Philips-3 has a label; a reduced CI
   fixture is pending). See
   `docs/superpowers/plans/2026-06-07-band1-generic-philips-splice.md`.
-- [ ] **Band 2 — BIF + NDPI.** Opens the overview role (BIF) and the Region
-  strategy + tifflow hardening (NDPI). OME-TIFF/COG-WSI are out of charter
-  (SubIFD / COG-compliance).
+- [x] **Band 2 — NDPI (Region strategy).** Label = left ~30% of the macro;
+  decode → blank/composite → re-encode → strip-substitution splice; pyramid
+  pixel data untouched. New tifflow `SpliceReplaceStripData`. See
+  `docs/superpowers/plans/2026-06-07-band2-ndpi-region.md`.
+- [ ] **Band 3 — BIF (region + XMP scrub).** Overview label-band blanking +
+  XMP barcode/metadata scrubbing (a new capability); needs its own design.
 - [ ] **Hamamatsu NDPI backend.** TIFF-based, reuses `internal/tifflow`.
   Label detection uses Hamamatsu vendor tags (e.g., "Reference" /
   "Overview" image role indicators), not Aperio-style ImageDescription.

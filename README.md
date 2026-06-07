@@ -109,8 +109,8 @@ Validated against an openslide-python round-trip plus a strict `tiffinfo -D` dec
 | Aperio SVS | ✅ V1 | Classic TIFF + BigTIFF |
 | generic-TIFF | ✅ | tag 65080 / heuristic; pure splice |
 | Philips-TIFF | ✅ | `Software` prefix detect; pure splice (label CI fixture pending) |
-| Hamamatsu NDPI | 🛣️ Band 2 | Region strategy (decode macro, blank, re-encode) |
-| Ventana BIF | 🛣️ Band 2 | overview-role splice |
+| Hamamatsu NDPI | ✅ | Region strategy (blank/composite the macro's label crop); pure-Go JPEG |
+| Ventana BIF | 🛣️ Band 3 | overview-role splice |
 | Leica SCN | 🛣️ Parked | overview-role + SCN-XML |
 | OME-TIFF | ❌ out of charter | SubIFD pyramid — needs file-rewrite (use wsitools) |
 | Zeiss CZI / MRXS | ❌ | non-TIFF / directory-based |
