@@ -13,6 +13,10 @@
 
 Use cases: **de-identification for data sharing**, **anonymization before publication**, **scrubbing PHI from research datasets**, and **bulk label updates** in pathology pipelines.
 
+## Why a separate tool?
+
+The label-handling capability here also lives inside [wsitools](https://github.com/wsilabs/wsitools), a larger WSI toolkit. This repo exists on purpose, not by accident. `wsitools` is pure-Go *capable*, but its default build enables CGo-backed codec encoders (AVIF, JPEG-XL, WebP, HTJ2K, libjpeg-turbo) that link native libraries — you only get a dependency-free wsitools by opting out via build tags. `wsi-label`, by contrast, is **unconditionally pure Go**: two pure-Go dependencies, zero CGo, no build flags to remember. That single property is the whole point — it cross-compiles to every platform from one machine, ships as a self-contained static binary with no `.so`/`.dll` to install, and presents a tiny audit and maintenance surface. So the rule of thumb is: **reach for `wsi-label` when you just need to redact or swap labels and want a drop-in binary; reach for `wsitools` when you need full whole-slide decoding and conversion.** The overlap is intentional duplication, and it stays here as long as staying dependency-free is worth it.
+
 ## Features
 
 - **Replace or strip** the label associated-image in an SVS file, without touching pyramid pixel data.
