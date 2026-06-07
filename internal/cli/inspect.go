@@ -71,7 +71,7 @@ func orderName(o interface{}) string {
 
 // identifyRole is a best-effort role assignment matching OpenSlide's logic
 // for Aperio SVS. It lives in cli for display purposes; wsi-label's actual
-// label location is computed in the aperio backend.
+// label location is computed in internal/redact (format/svs).
 func identifyRole(idx int, ifd *tifflow.IFD, order interface{}) string {
 	desc, _ := ifd.StringValue(tifflow.TagImageDescription)
 	lines := strings.SplitN(desc, "\n", 3)
@@ -87,7 +87,7 @@ func identifyRole(idx int, ifd *tifflow.IFD, order interface{}) string {
 	case strings.HasPrefix(second, "label"):
 		return "label"
 	case strings.HasPrefix(second, "macro"):
-		return "macro"
+		return "overview"
 	case hasTiles(ifd):
 		return "pyramid"
 	default:

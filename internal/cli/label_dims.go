@@ -31,7 +31,7 @@ func RunLabelDims(args []string, stdout, stderr io.Writer) error {
 		return fmt.Errorf("%w: no label IFD in %s", ErrUnreadable, path)
 	}
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrUnreadable, err)
+		return fmt.Errorf("%w: %v", ErrUnexpectedLayout, err)
 	}
 	fmt.Fprintf(stdout, "%dx%d\n", w, h)
 	return nil

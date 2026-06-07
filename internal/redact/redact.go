@@ -1,6 +1,7 @@
 package redact
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -46,6 +47,9 @@ func Replace(inPath, outPath string, opts ReplaceOptions) (*Result, error) {
 	}
 	file, err := parseFile(inPath)
 	if err != nil {
+		if errors.Is(err, tifflow.ErrBadMagic) {
+			return nil, ErrFormatUnsupported
+		}
 		return nil, err
 	}
 	c, ok := detectClassifier(file)
@@ -103,6 +107,9 @@ func Replace(inPath, outPath string, opts ReplaceOptions) (*Result, error) {
 func Strip(inPath, outPath string, fsync bool) error {
 	file, err := parseFile(inPath)
 	if err != nil {
+		if errors.Is(err, tifflow.ErrBadMagic) {
+			return ErrFormatUnsupported
+		}
 		return err
 	}
 	c, ok := detectClassifier(file)
@@ -127,6 +134,9 @@ func Strip(inPath, outPath string, fsync bool) error {
 func LabelDims(inPath string) (int, int, error) {
 	file, err := parseFile(inPath)
 	if err != nil {
+		if errors.Is(err, tifflow.ErrBadMagic) {
+			return 0, 0, ErrFormatUnsupported
+		}
 		return 0, 0, err
 	}
 	c, ok := detectClassifier(file)

@@ -90,9 +90,9 @@ func TestReplace_AllSamples(t *testing.T) {
 				t.Fatalf("Replace %s: %v", e.Name(), err)
 			}
 			assertPrefixIdentical(t, in, out)
-				if _, _, err := redact.LabelDims(out); err != nil {
-					t.Fatalf("output %s has no label after replace: %v", e.Name(), err)
-				}
+			if _, _, err := redact.LabelDims(out); err != nil {
+				t.Fatalf("output %s has no label after replace: %v", e.Name(), err)
+			}
 		})
 	}
 }

@@ -12,12 +12,12 @@ import (
 // orchestrator without a real format.
 type stubClassifier struct{}
 
-func (stubClassifier) Name() string                                       { return "stub" }
-func (stubClassifier) Detect(*tifflow.File) bool                          { return false }
+func (stubClassifier) Name() string                                      { return "stub" }
+func (stubClassifier) Detect(*tifflow.File) bool                         { return false }
 func (stubClassifier) Classify(*tifflow.File) ([]Target, error)          { return nil, nil }
 func (stubClassifier) BuildLabelIFD(image.Image) *tifflow.ReplacementIFD { return nil }
-func (stubClassifier) DefaultLabelDims() (int, int)                       { return 1200, 848 }
-func (stubClassifier) DefaultLabelBG() color.RGBA                         { return color.RGBA{} }
+func (stubClassifier) DefaultLabelDims() (int, int)                      { return 1200, 848 }
+func (stubClassifier) DefaultLabelBG() color.RGBA                        { return color.RGBA{} }
 
 func TestPickTargetDims_ExplicitOverride(t *testing.T) {
 	w, h := pickTargetDims(&Target{Width: 100, Height: 50}, stubClassifier{},
