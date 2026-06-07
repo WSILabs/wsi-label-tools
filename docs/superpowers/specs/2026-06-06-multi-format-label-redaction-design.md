@@ -32,26 +32,43 @@ around a role-keyed target abstraction so that redacting other associated
 images (macro/overview, thumbnail) later is an additive change, not a
 rearchitecture.
 
-**Formats in scope now** (each has a redactable label):
+**The hard boundary: `tifflow` only handles a linear top-level IFD chain.**
+`tifflow.Parse` returns `ErrSubIFDs` for any file containing tag 330
+(SubIFDs). So "splice-able" means "linear chain, no SubIFD trees." This was
+confirmed empirically by running `tifflow.Parse` over opentile-go's full
+`sample_files` corpus (2026-06): SVS, Philips, generic-TIFF, COG-WSI, BIF,
+and Leica SCN all parse; **both OME-TIFF samples are rejected with
+`ErrSubIFDs`** (their pyramid levels are SubIFDs of the base page). wsitools
+reached the same conclusion and moved OME-TIFF off splicing to a full
+file-rewrite — out of this repo's charter.
 
-| Format | Label representation | Strategy |
-|--------|----------------------|----------|
-| Aperio SVS | real label IFD | Splice (rebase existing code) |
-| generic-TIFF | label IFD (heuristic / tag 65080) | Splice |
-| OME-TIFF | label IFD (OME-XML `Name="label"`) | Splice |
-| Philips-TIFF | label IFD (ImageDescription `"Label"`) | Splice |
-| Hamamatsu NDPI | synthesized: left-crop of the macro | Region |
+**Formats in scope** (each has a redactable, separable target):
 
-**Formats deferred** (no distinct label — the patient-identifying image is
-published only as "overview"; these need the future other-associated-images
-door):
+| Format | Target representation | Strategy | Band |
+|--------|-----------------------|----------|------|
+| Aperio SVS | real label IFD | Splice | 0 (done) |
+| generic-TIFF | label IFD (tag 65080 → heuristic ladder) | Splice | 1 |
+| Philips-TIFF | label IFD (ImageDescription `"Label"`) | Splice | 1 |
+| Ventana BIF | `Label_Image` IFD (opentile role `"overview"`) | Splice + role door | 2 |
+| Hamamatsu NDPI | synthesized: left-crop of the macro | Region + tifflow hardening | 2 |
 
-- Ventana BIF — IFD 0 is structurally `Label_Image` but opentile-go
-  surfaces it as `"overview"`.
-- Leica SCN — only full-slide auxiliaries, all surfaced as `"overview"`.
+**Formats deferred / out of charter:**
 
-When the role door opens, BIF and SCN become "classify + act on the
-overview role," using the same two strategies.
+- **OME-TIFF** — SubIFD pyramid; unparseable by `tifflow`. Would require a
+  SubIFD-tolerant parser or a full file-rewrite (wsitools' path). Out of
+  charter to keep this repo simple. A file that uses SubIFDs surfaces a clean
+  "can't splice this layout" error rather than corruption — the boundary
+  enforces itself.
+- **COG-WSI** — parses fine (linear by design), but a splice cannot
+  guarantee the result stays COG-layout-compliant (cloud-optimized ordering /
+  ghost structure). Skipped, matching wsitools.
+- **Leica SCN** — parses fine, but auxiliaries are overview-only and
+  classification needs SCN-XML; parked behind the role door (a later phase).
+
+**The role door.** Only `RoleLabel` is acted on in Bands 0–1. Band 2 opens
+acting on `RoleOverview`, which BIF needs (its PHI image is the `Label_Image`
+that opentile-go publishes as `"overview"`) and which NDPI's region work also
+touches (the macro is an overview). SCN follows once the door is open.
 
 ## Non-goals
 
@@ -272,27 +289,52 @@ stored in a non-pure-Go-decodable codec" (Strategy 2 gate).
 
 ## Sequencing
 
-- **Band 0 — keystone refactor.** Stand up `redact` + `format` +
-  `strategy/splice` + `label`; rebase SVS onto it; dissolve
-  `internal/aperio` and `internal/wsi`; add the `test/oracle` module and CI
-  cross-validation. Behavior unchanged; existing tests + `cross_validate.py`
-  stay green. This is where the architecture and most risk live — if SVS
-  can't cleanly rebase, the design is wrong.
-- **Band 1 — splice formats.** Add `format/generictiff.go`, then
-  `ometiff.go`, `philips.go`. Each is a classifier + oracle test; pure
-  additions over Band 0's machinery.
-- **Band 2 — region strategy.** Add `strategy/region.go` and
-  `format/ndpi.go`.
-- **Parked behind the role door:** Ventana BIF, Leica SCN (need
-  overview-role actioning).
+- **Band 0 — keystone refactor.** ✅ Done (merged). `redact` + `format` +
+  `label` core; SVS rebased; `internal/aperio`/`internal/wsi` removed;
+  `test/oracle` module + CI. Behavior unchanged; `cross_validate.py` green.
+- **Band 1 — splice formats.** Add `format/generictiff.go` and
+  `format/philips.go` — each a classifier (porting opentile-go's signals) +
+  oracle test, pure additions over Band 0's machinery. Migrate test fixtures
+  to `wsi-fixtures` (see Test fixtures) and retire the committed
+  `sample_svs/`. (OME-TIFF was originally listed here but is now out of
+  charter — SubIFD; see Scope.)
+- **Band 2 — BIF + NDPI.** Opens the **role door** (act on `RoleOverview`):
+  - **BIF** — `format/bif.go`; a pure splice of the `Label_Image` IFD, but
+    targeting the overview role. Detect: BigTIFF + XMP tag 700 contains
+    `<iScan`.
+  - **NDPI** — `format/ndpi.go` + the **Region strategy** (`strategy/region`,
+    stdlib `image/jpeg` decode → blank → re-encode → splice) **plus tifflow
+    hardening**: the probe showed NDPI's nonstandard tag types (e.g. 44718)
+    and offset reuse break `tifflow.Parse` on 2 of 3 samples. Toughening
+    tifflow for NDPI is in-scope work (tifflow is ours).
+- **Parked:** Leica SCN (role door + SCN-XML classification), OME-TIFF (out
+  of charter), COG-WSI (out of charter).
+
+## Test fixtures
+
+CI fixtures come from the shared, license-audited
+[`wsilabs/wsi-fixtures`](https://github.com/wsilabs/wsi-fixtures) repo
+(download-from-release: a pinned tag's per-format `*.tar` assets extracted to
+`sample_files/<format>/<name>`). Band 1 **retires the committed
+`sample_svs/`** and consumes everything from wsi-fixtures, including the SVS.
+
+- Add to wsi-fixtures (new `v2` release): `philips-tiff/Philips-4.tiff` (CC0,
+  openslide-testdata) and a small `generic-tiff` fixture with a label
+  (opentile-go's ~723 KB `synth-pyramid-with-label.tiff`, or a CMU-derived
+  stripped TIFF).
+- wsi-label-tools CI gains a "download fixtures" step pinned to the new tag;
+  tests, the oracle, and `cross_validate.py` reference `sample_files/...` and
+  **skip when absent** so local `go test ./...` still builds without a
+  download.
 
 ## Documentation impact
 
 - README "Why a separate tool?" section (commit `c0448de`) **stays valid** —
   the binary remains pure-Go with two deps; opentile-go is test-only. Update
-  the supported-formats table to reflect SVS/generic-TIFF/OME-TIFF/Philips
-  (label, splice) + NDPI (label, region), and note BIF/SCN as roadmap.
-- ROADMAP: mark the NDPI/format-coverage band against this spec.
+  the supported-formats table per band: SVS + generic-TIFF + Philips (label,
+  splice); BIF + NDPI (Band 2); OME-TIFF/COG-WSI marked out-of-charter with
+  the SubIFD/COG-compliance rationale.
+- ROADMAP: mark Band 1 (generic-TIFF + Philips) and Band 2 (BIF + NDPI).
 
 ## Open questions
 
