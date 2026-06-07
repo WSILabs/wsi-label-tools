@@ -87,6 +87,23 @@ jobs:
       - name: Cross-validate
         run: python scripts/cross_validate.py ./wsi-label
 
+  oracle:
+    name: opentile-go classification oracle (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Cross-validate classification against opentile-go (CGo off)
+        working-directory: test/oracle
+        env:
+          CGO_ENABLED: '0'
+        run: go test ./... -count=1 -v
+
 # To extend validation to the full OpenSlide demo corpus (larger files,
 # JPEG2000 variants) on-demand, add a second workflow triggered by
 # workflow_dispatch that fetches from https://openslide.cs.cmu.edu/...
