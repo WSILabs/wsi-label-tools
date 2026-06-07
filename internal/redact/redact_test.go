@@ -16,7 +16,7 @@ import (
 
 func svsSample(t *testing.T, name string) string {
 	t.Helper()
-	return filepath.Join("..", "..", "sample_svs", name)
+	return filepath.Join("..", "..", "sample_files", "svs", name)
 }
 
 // newTestLabel returns a small solid image to use as a replacement label.
@@ -72,7 +72,7 @@ func TestStrip_CMU1SmallRegion(t *testing.T) {
 // TestReplace_AllSamples runs replace against every sample SVS and verifies
 // the prefix-before-label is byte-identical to the input (the core invariant).
 func TestReplace_AllSamples(t *testing.T) {
-	dir := filepath.Join("..", "..", "sample_svs")
+	dir := filepath.Join("..", "..", "sample_files", "svs")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Skipf("no sample dir: %v", err)

@@ -14,12 +14,8 @@ __pycache__/
 /.claude/
 /CLAUDE.md
 
-# Sample WSI files: directory contents are ignored by default because real
-# slide files may carry sensitive label text. Exception: the small public
-# OpenSlide fixture is tracked so tests run out-of-the-box after clone.
-/sample_svs/*
-!/sample_svs/CMU-1-Small-Region.svs
-!/sample_svs/README.md
+# Downloaded WSI fixtures (see scripts/fetch-fixtures.sh)
+sample_files/
 
 # Intermediate label TIFFs produced by the Python orchestrator
 *_label.tif

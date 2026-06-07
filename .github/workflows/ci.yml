@@ -54,6 +54,16 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Download fixtures
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p sample_files
+          cd sample_files
+          gh release download v2 --repo wsilabs/wsi-fixtures --pattern '*.tar'
+          for t in *.tar; do tar xf "$t" && rm "$t"; done
+          ls -R .
+
       - name: go vet
         run: go vet ./...
 
@@ -98,6 +108,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Download fixtures
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p sample_files
+          cd sample_files
+          gh release download v2 --repo wsilabs/wsi-fixtures --pattern '*.tar'
+          for t in *.tar; do tar xf "$t" && rm "$t"; done
+          ls -R .
       - name: Cross-validate classification against opentile-go (CGo off)
         working-directory: test/oracle
         env:

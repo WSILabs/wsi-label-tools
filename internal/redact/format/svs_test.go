@@ -28,10 +28,10 @@ func detectPath(t *testing.T, p string) bool {
 }
 
 func TestDetect_SampleFiles(t *testing.T) {
-	dir := filepath.Join("..", "..", "..", "sample_svs")
+	dir := filepath.Join("..", "..", "..", "sample_files", "svs")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		t.Skipf("sample_svs not available: %v", err)
+		t.Skipf("sample_files/svs not available: %v", err)
 	}
 	for _, e := range entries {
 		if filepath.Ext(e.Name()) != ".svs" {

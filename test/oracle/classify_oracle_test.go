@@ -49,7 +49,7 @@ func hasLabelOpentile(t *testing.T, path string) bool {
 // TestLabelPresenceAgrees asserts our label detection matches opentile-go's
 // across the sample corpus.
 func TestLabelPresenceAgrees(t *testing.T) {
-	dir := filepath.Join("..", "..", "sample_svs")
+	dir := filepath.Join("..", "..", "sample_files", "svs")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Skipf("no sample dir: %v", err)
@@ -72,7 +72,7 @@ func TestLabelPresenceAgrees(t *testing.T) {
 // TestLabelOffsetAgrees, where opentile-go exposes AssociatedIFDOffset (SVS),
 // asserts the located label IFD offset matches ours.
 func TestLabelOffsetAgrees(t *testing.T) {
-	dir := filepath.Join("..", "..", "sample_svs")
+	dir := filepath.Join("..", "..", "sample_files", "svs")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Skipf("no sample dir: %v", err)

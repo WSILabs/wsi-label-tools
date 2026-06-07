@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-validate wsi-label output against external readers.
 
-For each sample SVS in sample_svs/, runs `wsi-label replace --resize=none`
+For each sample SVS in sample_files/svs/, runs `wsi-label replace --resize=none`
 with a synthetic 1200x848 label and then performs four independent checks:
 
   1. libtiff strict decode (tiffinfo -D): opens every IFD AND decodes every
@@ -40,7 +40,7 @@ import tifffile
 from PIL import Image
 
 HERE = Path(__file__).resolve().parent.parent
-SAMPLES = HERE / "sample_svs"
+SAMPLES = HERE / "sample_files" / "svs"
 TMP = HERE / ".tmp_crossvalidate"
 
 # libtiff stderr patterns that indicate a real problem. We'd rather be noisy
