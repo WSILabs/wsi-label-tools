@@ -14,12 +14,12 @@ type fakeClassifier struct {
 	match bool
 }
 
-func (f fakeClassifier) Name() string                                     { return f.name }
-func (f fakeClassifier) Detect(*tifflow.File) bool                        { return f.match }
+func (f fakeClassifier) Name() string                                    { return f.name }
+func (f fakeClassifier) Detect(*tifflow.File) bool                       { return f.match }
 func (fakeClassifier) Classify(*tifflow.File) ([]Target, error)          { return nil, nil }
 func (fakeClassifier) BuildLabelIFD(image.Image) *tifflow.ReplacementIFD { return nil }
-func (fakeClassifier) DefaultLabelDims() (int, int)                       { return 0, 0 }
-func (fakeClassifier) DefaultLabelBG() color.RGBA                         { return color.RGBA{} }
+func (fakeClassifier) DefaultLabelDims() (int, int)                      { return 0, 0 }
+func (fakeClassifier) DefaultLabelBG() color.RGBA                        { return color.RGBA{} }
 
 func TestDetect_FallbackTriedLast(t *testing.T) {
 	savedV, savedF := classifiers, fallbacks
