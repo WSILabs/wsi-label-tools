@@ -46,8 +46,10 @@ type ReplaceOptions struct {
 	StrictReplace bool
 	// Fsync forces an fsync before the atomic rename.
 	Fsync bool
-	// TargetWidth and TargetHeight override the target dimensions. Zero means
-	// "auto": existing label's dims, else the classifier default.
+	// TargetWidth and TargetHeight override the target dimensions. BOTH must
+	// be positive to take effect; if either is zero the override is ignored
+	// and dimensions fall back to the existing label's dims, else the
+	// classifier default.
 	TargetWidth  int
 	TargetHeight int
 }
