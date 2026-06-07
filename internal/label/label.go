@@ -1,4 +1,4 @@
-package aperio
+package label
 
 import (
 	"bytes"

@@ -1,4 +1,4 @@
-package aperio
+package label
 
 import (
 	"fmt"
@@ -8,19 +8,17 @@ import (
 	"math"
 
 	xdraw "golang.org/x/image/draw"
-
-	"github.com/cornish/wsi-label-tools/internal/wsi"
 )
 
 // aspectMismatchThreshold: if source and target aspect ratios differ by
 // more than this factor, ResizeFit refuses without --force.
 const aspectMismatchThreshold = 2.0
 
-// PrepareLabel transforms a caller-supplied image into the width×height
+// Prepare transforms a caller-supplied image into the width×height
 // RGBA canvas this backend needs. Applies rotation first, then resize
 // according to opts.Resize, with opts.BG used for letterbox and opts.Force
 // bypassing the aspect-mismatch safety check.
-func PrepareLabel(src image.Image, width, height int, opts wsi.ReplaceOptions) (*image.RGBA, error) {
+func Prepare(src image.Image, width, height int, opts PrepareOptions) (*image.RGBA, error) {
 	rotated, err := rotate(src, opts.Rotate)
 	if err != nil {
 		return nil, err
@@ -30,7 +28,7 @@ func PrepareLabel(src image.Image, width, height int, opts wsi.ReplaceOptions) (
 	sw, sh := sb.Dx(), sb.Dy()
 
 	switch opts.Resize {
-	case wsi.ResizeNone:
+	case ResizeNone:
 		if sw != width || sh != height {
 			return nil, fmt.Errorf(
 				"label is %dx%d but target is %dx%d and --resize=none",
@@ -41,12 +39,12 @@ func PrepareLabel(src image.Image, width, height int, opts wsi.ReplaceOptions) (
 		draw.Draw(dst, dst.Bounds(), rotated, sb.Min, draw.Src)
 		return dst, nil
 
-	case wsi.ResizeStretch:
+	case ResizeStretch:
 		dst := image.NewRGBA(image.Rect(0, 0, width, height))
 		xdraw.CatmullRom.Scale(dst, dst.Bounds(), rotated, sb, xdraw.Over, nil)
 		return dst, nil
 
-	case wsi.ResizeFit:
+	case ResizeFit:
 		fallthrough
 	default:
 		if !opts.Force {
@@ -56,7 +54,7 @@ func PrepareLabel(src image.Image, width, height int, opts wsi.ReplaceOptions) (
 			if ratio > aspectMismatchThreshold {
 				return nil, fmt.Errorf(
 					"%w: source %dx%d (aspect %.2f), target %dx%d (aspect %.2f), ratio %.2f > %.1f",
-					wsi.ErrAspectMismatch,
+					ErrAspectMismatch,
 					sw, sh, srcAspect, width, height, dstAspect, ratio, aspectMismatchThreshold,
 				)
 			}

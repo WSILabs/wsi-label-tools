@@ -1,4 +1,4 @@
-package aperio
+package label
 
 import (
 	"encoding/binary"
@@ -15,11 +15,11 @@ func aperioDescription(width, height int) string {
 	return fmt.Sprintf("Aperio Image Library v12.4.7\nlabel %dx%d", width, height)
 }
 
-// BuildLabelIFD produces a ReplacementIFD for the given RGB image. The
+// BuildAperioLabelIFD produces a ReplacementIFD for the given RGB image. The
 // image's own bounds determine the label's ImageWidth/ImageLength and the
 // "label WxH" ImageDescription line — callers are expected to have already
 // resized/prepared the image to the target dimensions.
-func BuildLabelIFD(img image.Image) *tifflow.ReplacementIFD {
+func BuildAperioLabelIFD(img image.Image) *tifflow.ReplacementIFD {
 	b := img.Bounds()
 	width, height := b.Dx(), b.Dy()
 	strips := EncodeLabelStrips(img)
