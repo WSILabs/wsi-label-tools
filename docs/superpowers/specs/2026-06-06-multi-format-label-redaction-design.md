@@ -47,10 +47,21 @@ file-rewrite — out of this repo's charter.
 | Format | Target representation | Strategy | Band |
 |--------|-----------------------|----------|------|
 | Aperio SVS | real label IFD | Splice | 0 (done) |
-| generic-TIFF | label IFD (tag 65080 → heuristic ladder) | Splice | 1 |
-| Philips-TIFF | label IFD (ImageDescription `"Label"`) | Splice | 1 |
-| Ventana BIF | `Label_Image` IFD (opentile role `"overview"`) | Splice + role door | 2 |
-| Hamamatsu NDPI | synthesized: left-crop of the macro | Region + tifflow hardening | 2 |
+| generic-TIFF | label IFD (tag 65080 → heuristic ladder) | Splice | 1 (done) |
+| Philips-TIFF | label IFD (ImageDescription `"Label"`) | Splice | 1 (done) |
+| Hamamatsu NDPI | synthesized: left-crop of the macro | Region | 2 |
+| Ventana BIF | label band of the overview + XMP barcodes | Region + XMP scrub | 3 |
+
+**BIF correction (per the Roche BIF whitepaper v1.0).** BIF is NOT a splice and
+has no separable label IFD. IFD 0 (`IMAGE_DESCRIPTION='Label_Image'`) is the
+*whole-slide overview including the printed label as its top band*; the XMP
+`iScan>ProcessingParameters>AOIParameters>YStart` marks the first tissue row
+(so the label occupies rows `[0, YStart)` of the overview). PHI also lives in
+**XMP metadata** — `Barcode1D`/`Barcode2D` (decoded patient barcodes),
+`UserName`, `SlideIdentifier`. The high-res pyramid (IFD 2+) is PHI-free (AOIs
+are outside the label area). So BIF redaction = **region-blank the overview's
+label band (or remove IFD 0) + scrub XMP barcodes/metadata** — a new
+capability (XMP editing) that warrants its own band (Band 3), not a splice.
 
 **Formats deferred / out of charter:**
 
@@ -65,10 +76,12 @@ file-rewrite — out of this repo's charter.
 - **Leica SCN** — parses fine, but auxiliaries are overview-only and
   classification needs SCN-XML; parked behind the role door (a later phase).
 
-**The role door.** Only `RoleLabel` is acted on in Bands 0–1. Band 2 opens
-acting on `RoleOverview`, which BIF needs (its PHI image is the `Label_Image`
-that opentile-go publishes as `"overview"`) and which NDPI's region work also
-touches (the macro is an overview). SCN follows once the door is open.
+**The role door.** Bands 0–2 act on `RoleLabel` only. NDPI (Band 2) stays on
+`RoleLabel` — its label is a *region of* the macro, redacted via the Region
+strategy, so it needs Representation dispatch, not a new role. The role door
+(acting on `RoleOverview`) is genuinely needed only by **BIF (Band 3)** and
+later **Leica SCN**, whose PHI image is published as `"overview"`. It opens
+with those bands, not before.
 
 ## Non-goals
 
@@ -292,23 +305,27 @@ stored in a non-pure-Go-decodable codec" (Strategy 2 gate).
 - **Band 0 — keystone refactor.** ✅ Done (merged). `redact` + `format` +
   `label` core; SVS rebased; `internal/aperio`/`internal/wsi` removed;
   `test/oracle` module + CI. Behavior unchanged; `cross_validate.py` green.
-- **Band 1 — splice formats.** Add `format/generictiff.go` and
-  `format/philips.go` — each a classifier (porting opentile-go's signals) +
-  oracle test, pure additions over Band 0's machinery. Migrate test fixtures
-  to `wsi-fixtures` (see Test fixtures) and retire the committed
-  `sample_svs/`. (OME-TIFF was originally listed here but is now out of
-  charter — SubIFD; see Scope.)
-- **Band 2 — BIF + NDPI.** Opens the **role door** (act on `RoleOverview`):
-  - **BIF** — `format/bif.go`; a pure splice of the `Label_Image` IFD, but
-    targeting the overview role. Detect: BigTIFF + XMP tag 700 contains
-    `<iScan`.
-  - **NDPI** — `format/ndpi.go` + the **Region strategy** (`strategy/region`,
-    stdlib `image/jpeg` decode → blank → re-encode → splice) **plus tifflow
-    hardening**: the probe showed NDPI's nonstandard tag types (e.g. 44718)
-    and offset reuse break `tifflow.Parse` on 2 of 3 samples. Toughening
-    tifflow for NDPI is in-scope work (tifflow is ours).
-- **Parked:** Leica SCN (role door + SCN-XML classification), OME-TIFF (out
-  of charter), COG-WSI (out of charter).
+- **Band 1 — splice formats.** ✅ Done (merged). `format/generictiff.go`
+  (tag 65080 → heuristic ladder, fallback) + `format/philips.go` (Software
+  prefix detect, substring classify), strip + replace, oracle-validated.
+  Fixtures migrated to `wsi-fixtures` (v2); committed `sample_svs/` retired.
+  (OME-TIFF was originally listed here but is out of charter — SubIFD.)
+- **Band 2 — NDPI (Region strategy).** Add `strategy/region.go` (stdlib
+  `image/jpeg` decode → blank/composite the left crop → re-encode → splice)
+  and the orchestrator's **Representation-based dispatch** (Splice vs Region).
+  `format/ndpi.go` classifies the label as a `RoleLabel` target with
+  `EmbeddedRegion` representation (host = macro IFD, region = left ~30%). No
+  role door needed — it acts on the label, just via the Region path. Scope to
+  files `tifflow.Parse` already handles (CMU-1.ndpi parses); broader NDPI
+  tifflow hardening (nonstandard tag types, offset reuse seen on other
+  samples) is deferred to its own task with fixtures.
+- **Band 3 — BIF (region + XMP scrub).** NOT a splice (see BIF correction):
+  region-blank the overview's label band (rows `[0, YStart)` from XMP) or
+  remove IFD 0, **plus** scrub XMP `Barcode1D`/`Barcode2D`/`UserName`/
+  `SlideIdentifier` — a new XMP-editing capability. Needs its own design pass.
+  Detect: BigTIFF + XMP tag 700 contains `<iScan`.
+- **Parked:** Leica SCN (overview-role + SCN-XML classification), OME-TIFF
+  (out of charter), COG-WSI (out of charter).
 
 ## Test fixtures
 
