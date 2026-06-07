@@ -15,41 +15,35 @@ func aperioDescription(width, height int) string {
 	return fmt.Sprintf("Aperio Image Library v12.4.7\nlabel %dx%d", width, height)
 }
 
-// BuildAperioLabelIFD produces a ReplacementIFD for the given RGB image. The
-// image's own bounds determine the label's ImageWidth/ImageLength and the
-// "label WxH" ImageDescription line — callers are expected to have already
-// resized/prepared the image to the target dimensions.
-func BuildAperioLabelIFD(img image.Image) *tifflow.ReplacementIFD {
+// BuildStripLabelIFD produces a ReplacementIFD for the given RGB image as an
+// LZW + predictor-2, 8-bit RGB, multi-strip label. `desc` becomes the
+// ImageDescription. `extra` tags (which MUST have tag numbers greater than
+// TagPredictor=317 to preserve ascending order) are appended verbatim —
+// used to stamp format re-classification markers (e.g. tag 65080).
+func BuildStripLabelIFD(img image.Image, desc string, extra ...tifflow.OutTag) *tifflow.ReplacementIFD {
 	b := img.Bounds()
 	width, height := b.Dx(), b.Dy()
 	strips := EncodeLabelStrips(img)
-	desc := aperioDescription(width, height)
 
 	stripByteCounts := make([]byte, 0, len(strips)*4)
-	// Byte counts written as LONG (uint32) — safe since label strips are <<4GB.
-	// Written little-endian; the emitter converts to the file's byte order.
 	for _, s := range strips {
 		lb := make([]byte, 4)
 		binary.LittleEndian.PutUint32(lb, uint32(len(s)))
 		stripByteCounts = append(stripByteCounts, lb...)
 	}
-
-	// StripOffsets: one entry per strip, placeholders (will be filled by emitter).
 	stripOffsetsPlaceholder := make([]byte, len(strips)*4)
 
 	shortLE := func(v uint16) []byte {
-		b := make([]byte, 4)
-		binary.LittleEndian.PutUint16(b, v)
-		return b
+		bb := make([]byte, 4)
+		binary.LittleEndian.PutUint16(bb, v)
+		return bb
 	}
 	longLE := func(v uint32) []byte {
-		b := make([]byte, 4)
-		binary.LittleEndian.PutUint32(b, v)
-		return b
+		bb := make([]byte, 4)
+		binary.LittleEndian.PutUint32(bb, v)
+		return bb
 	}
 
-	// BitsPerSample: 3 × SHORT = 6 bytes. Marked not-inline here; the
-	// emitter's inline-promotion pass handles BigTIFF's 8-byte value field.
 	bps := make([]byte, 6)
 	binary.LittleEndian.PutUint16(bps[0:2], 8)
 	binary.LittleEndian.PutUint16(bps[2:4], 8)
@@ -70,11 +64,16 @@ func BuildAperioLabelIFD(img image.Image) *tifflow.ReplacementIFD {
 		{Tag: tifflow.TagPlanarConfig, Type: tifflow.TypeShort, Count: 1, Inline: true, Bytes: shortLE(1)},
 		{Tag: tifflow.TagPredictor, Type: tifflow.TypeShort, Count: 1, Inline: true, Bytes: shortLE(2)},
 	}
+	tags = append(tags, extra...)
 
-	return &tifflow.ReplacementIFD{
-		Tags:      tags,
-		StripData: strips,
-	}
+	return &tifflow.ReplacementIFD{Tags: tags, StripData: strips}
+}
+
+// BuildAperioLabelIFD produces an Aperio-flavored label IFD (Aperio
+// ImageDescription with the "label WxH" second line OpenSlide keys on).
+func BuildAperioLabelIFD(img image.Image) *tifflow.ReplacementIFD {
+	b := img.Bounds()
+	return BuildStripLabelIFD(img, aperioDescription(b.Dx(), b.Dy()))
 }
 
 func iotaSlice(n int) []int {

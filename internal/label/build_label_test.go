@@ -39,3 +39,34 @@ func TestBuildLabelIFD(t *testing.T) {
 		t.Errorf("StripOffsets must ResolvesToOffset")
 	}
 }
+
+func TestBuildStripLabelIFD_DescAndExtraTag(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 64, 48))
+	rep := BuildStripLabelIFD(img, "hello\nlabel 64x48",
+		tifflow.OutTag{
+			Tag: tifflow.TagWSIImageType, Type: tifflow.TypeASCII,
+			Count: uint64(len("label") + 1), Inline: false,
+			Bytes: append([]byte("label"), 0),
+		})
+	var gotDesc string
+	var hasWSIType bool
+	for _, tg := range rep.Tags {
+		if tg.Tag == tifflow.TagImageDescription {
+			gotDesc = string(tg.Bytes)
+		}
+		if tg.Tag == tifflow.TagWSIImageType {
+			hasWSIType = true
+		}
+	}
+	if gotDesc != "hello\nlabel 64x48\x00" {
+		t.Fatalf("desc = %q", gotDesc)
+	}
+	if !hasWSIType {
+		t.Fatalf("extra tag 65080 not present")
+	}
+	for i := 1; i < len(rep.Tags); i++ {
+		if rep.Tags[i].Tag < rep.Tags[i-1].Tag {
+			t.Fatalf("tags not ascending at %d: %d before %d", i, rep.Tags[i-1].Tag, rep.Tags[i].Tag)
+		}
+	}
+}
