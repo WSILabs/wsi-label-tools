@@ -61,6 +61,9 @@ func Replace(inPath, outPath string, opts ReplaceOptions) (*Result, error) {
 		return nil, err
 	}
 	labelT := findRole(targets, RoleLabel)
+	if labelT != nil && labelT.Representation == EmbeddedRegion {
+		return regionReplace(inPath, outPath, file, c, labelT, opts)
+	}
 	if labelT == nil && opts.StrictReplace {
 		return nil, ErrNoLabel
 	}
@@ -123,6 +126,9 @@ func Strip(inPath, outPath string, fsync bool) error {
 	labelT := findRole(targets, RoleLabel)
 	if labelT == nil {
 		return ErrNoLabel
+	}
+	if labelT.Representation == EmbeddedRegion {
+		return regionStrip(inPath, outPath, file, labelT, fsync)
 	}
 	return tifflow.Splice(tifflow.SpliceParams{
 		InPath: inPath, OutPath: outPath, File: file,
