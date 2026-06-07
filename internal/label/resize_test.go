@@ -1,12 +1,10 @@
-package aperio
+package label
 
 import (
 	"errors"
 	"image"
 	"image/color"
 	"testing"
-
-	"github.com/cornish/wsi-label-tools/internal/wsi"
 )
 
 func TestFitTo_ExactDims(t *testing.T) {
@@ -42,8 +40,8 @@ func TestFitTo_Letterboxed(t *testing.T) {
 
 func TestPrepareLabel_ResizeNone_ExactDims(t *testing.T) {
 	src := image.NewRGBA(image.Rect(0, 0, AperioLabelWidth, AperioLabelHeight))
-	out, err := PrepareLabel(src, AperioLabelWidth, AperioLabelHeight, wsi.ReplaceOptions{
-		Resize: wsi.ResizeNone,
+	out, err := Prepare(src, AperioLabelWidth, AperioLabelHeight, PrepareOptions{
+		Resize: ResizeNone,
 	})
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -55,8 +53,8 @@ func TestPrepareLabel_ResizeNone_ExactDims(t *testing.T) {
 
 func TestPrepareLabel_ResizeNone_WrongDimsRejects(t *testing.T) {
 	src := image.NewRGBA(image.Rect(0, 0, 100, 100))
-	_, err := PrepareLabel(src, AperioLabelWidth, AperioLabelHeight, wsi.ReplaceOptions{
-		Resize: wsi.ResizeNone,
+	_, err := Prepare(src, AperioLabelWidth, AperioLabelHeight, PrepareOptions{
+		Resize: ResizeNone,
 	})
 	if err == nil {
 		t.Fatalf("expected error for mismatched dims under --resize=none")
@@ -65,8 +63,8 @@ func TestPrepareLabel_ResizeNone_WrongDimsRejects(t *testing.T) {
 
 func TestPrepareLabel_ResizeStretch(t *testing.T) {
 	src := image.NewRGBA(image.Rect(0, 0, 100, 100))
-	out, err := PrepareLabel(src, AperioLabelWidth, AperioLabelHeight, wsi.ReplaceOptions{
-		Resize: wsi.ResizeStretch,
+	out, err := Prepare(src, AperioLabelWidth, AperioLabelHeight, PrepareOptions{
+		Resize: ResizeStretch,
 	})
 	if err != nil {
 		t.Fatalf("err: %v", err)
@@ -79,19 +77,19 @@ func TestPrepareLabel_ResizeStretch(t *testing.T) {
 func TestPrepareLabel_AspectMismatchRejected(t *testing.T) {
 	// 10000x10 is an extreme aspect (1000:1) vs Aperio's ~1.42:1 target.
 	src := image.NewRGBA(image.Rect(0, 0, 10000, 10))
-	_, err := PrepareLabel(src, AperioLabelWidth, AperioLabelHeight, wsi.ReplaceOptions{
-		Resize: wsi.ResizeFit,
+	_, err := Prepare(src, AperioLabelWidth, AperioLabelHeight, PrepareOptions{
+		Resize: ResizeFit,
 		BG:     color.RGBA{245, 245, 230, 255},
 	})
-	if !errors.Is(err, wsi.ErrAspectMismatch) {
+	if !errors.Is(err, ErrAspectMismatch) {
 		t.Errorf("err = %v, want ErrAspectMismatch", err)
 	}
 }
 
 func TestPrepareLabel_AspectMismatchBypassedWithForce(t *testing.T) {
 	src := image.NewRGBA(image.Rect(0, 0, 10000, 10))
-	out, err := PrepareLabel(src, AperioLabelWidth, AperioLabelHeight, wsi.ReplaceOptions{
-		Resize: wsi.ResizeFit,
+	out, err := Prepare(src, AperioLabelWidth, AperioLabelHeight, PrepareOptions{
+		Resize: ResizeFit,
 		BG:     color.RGBA{245, 245, 230, 255},
 		Force:  true,
 	})
@@ -107,8 +105,8 @@ func TestPrepareLabel_Rotate90_Accepted(t *testing.T) {
 	// Square source: rotation doesn't change the aspect ratio, so the fit
 	// path accepts it against Aperio's 1.42:1 target.
 	src := image.NewRGBA(image.Rect(0, 0, 200, 200))
-	out, err := PrepareLabel(src, AperioLabelWidth, AperioLabelHeight, wsi.ReplaceOptions{
-		Resize: wsi.ResizeFit,
+	out, err := Prepare(src, AperioLabelWidth, AperioLabelHeight, PrepareOptions{
+		Resize: ResizeFit,
 		BG:     color.RGBA{245, 245, 230, 255},
 		Rotate: 90,
 	})
@@ -122,8 +120,8 @@ func TestPrepareLabel_Rotate90_Accepted(t *testing.T) {
 
 func TestPrepareLabel_RotateInvalid(t *testing.T) {
 	src := image.NewRGBA(image.Rect(0, 0, 100, 100))
-	_, err := PrepareLabel(src, AperioLabelWidth, AperioLabelHeight, wsi.ReplaceOptions{
-		Resize: wsi.ResizeFit,
+	_, err := Prepare(src, AperioLabelWidth, AperioLabelHeight, PrepareOptions{
+		Resize: ResizeFit,
 		BG:     color.RGBA{245, 245, 230, 255},
 		Rotate: 45,
 	})

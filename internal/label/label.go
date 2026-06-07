@@ -15,9 +15,6 @@ const (
 	AperioRowsPerStrip = 2
 )
 
-// AperioLabelDescription is the ImageDescription written for a replacement label.
-const AperioLabelDescription = "Aperio Image Library v12.4.7\nlabel 1200x848"
-
 // AperioLabelBG is the default letterbox fill color.
 var AperioLabelBG = color.RGBA{245, 245, 230, 255}
 

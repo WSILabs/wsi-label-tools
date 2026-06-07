@@ -1,4 +1,4 @@
-package aperio
+package label
 
 import (
 	"image"
@@ -16,7 +16,7 @@ func TestBuildLabelIFD(t *testing.T) {
 			img.Set(x, y, color.RGBA{200, 200, 200, 255})
 		}
 	}
-	rep := BuildLabelIFD(img)
+	rep := BuildAperioLabelIFD(img)
 	if len(rep.StripData) != (AperioLabelHeight+AperioRowsPerStrip-1)/AperioRowsPerStrip {
 		t.Errorf("strip count = %d, want %d", len(rep.StripData), 424)
 	}
