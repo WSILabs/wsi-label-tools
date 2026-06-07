@@ -34,6 +34,14 @@ binaries.
 Work driven by real lab needs, not speculative. Pick based on which
 scanners and which PHI exposures you actually encounter.
 
+- [x] **Band 0 — redact core refactor.** Replaced `internal/aperio` +
+  `wsi.Backend` with the format-neutral `internal/redact` core (role-keyed
+  targets, classifier registry) + `internal/label` builder + `format/svs`
+  classifier, plus an opentile-go classification oracle (test-only nested
+  module, `CGO_ENABLED=0`). See
+  `docs/superpowers/plans/2026-06-06-band0-redact-core-refactor.md` and
+  `docs/superpowers/specs/2026-06-06-multi-format-label-redaction-design.md`.
+  Behavior unchanged; cross_validate green.
 - [ ] **Hamamatsu NDPI backend.** TIFF-based, reuses `internal/tifflow`.
   Label detection uses Hamamatsu vendor tags (e.g., "Reference" /
   "Overview" image role indicators), not Aperio-style ImageDescription.

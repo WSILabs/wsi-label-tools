@@ -25,7 +25,7 @@ The label-handling capability here also lives inside [wsitools](https://github.c
 - **Codec-independent** — JPEG, JPEG2000, and any other tile codec pass through as opaque byte ranges.
 - **Pure Go** — no CGo, no libtiff/libopenslide runtime dependency. One static binary per platform.
 - **Atomic writes** — temp-file + fsync + rename; killed runs never leave a half-written output.
-- **Extensible** — architecture isolates Aperio-specific logic behind a `wsi.Backend` interface; adding Hamamatsu NDPI, Leica SCN, etc. is a drop-in, not a rewrite.
+- **Extensible** — format detection/classification lives behind a `redact.Classifier` registry (one `init()` registration per format); adding OME-TIFF, Philips, NDPI, etc. is a drop-in, not a rewrite.
 
 ## Install
 
