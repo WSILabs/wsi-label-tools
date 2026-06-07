@@ -50,6 +50,11 @@ const (
 	SpliceAppend
 	// SpliceRemove removes the target IFD entirely from the chain.
 	SpliceRemove
+	// SpliceReplaceStripData re-emits the target IFD preserving all of its
+	// tags (including private tags) but with its strip/tile data replaced by
+	// caller-supplied bytes (StripData), updating StripByteCounts/TileByteCounts
+	// to the new lengths.
+	SpliceReplaceStripData
 )
 
 // SpliceParams is input to Splice.
@@ -59,7 +64,10 @@ type SpliceParams struct {
 	Mode            SpliceMode
 	TargetIdx       int // interpretation depends on Mode
 	Replacement     *ReplacementIFD
-	Fsync           bool
+	// StripData is the replacement strip/tile data for the target IFD, one
+	// entry per strip/tile, used only by SpliceReplaceStripData.
+	StripData [][]byte
+	Fsync     bool
 }
 
 // Splice performs the prefix-copy + tail-re-emit operation and writes the
@@ -90,6 +98,11 @@ func doSplice(p SpliceParams) error {
 			return fmt.Errorf("%w: target idx out of range", ErrUnexpectedLayout)
 		}
 		firstTail = p.TargetIdx + 1
+	case SpliceReplaceStripData:
+		if p.TargetIdx < 0 || p.TargetIdx >= n {
+			return fmt.Errorf("%w: target idx out of range", ErrUnexpectedLayout)
+		}
+		firstTail = p.TargetIdx + 1
 	default:
 		return fmt.Errorf("unknown splice mode %d", p.Mode)
 	}
@@ -97,7 +110,7 @@ func doSplice(p SpliceParams) error {
 	// Also include the IFD being replaced/removed itself in the tail
 	// for range-dominance checking.
 	minTailOwner := firstTail
-	if p.Mode == SpliceReplace || p.Mode == SpliceRemove {
+	if p.Mode == SpliceReplace || p.Mode == SpliceRemove || p.Mode == SpliceReplaceStripData {
 		minTailOwner = p.TargetIdx
 	}
 
@@ -154,7 +167,7 @@ func doSplice(p SpliceParams) error {
 		return emitReplacementIFD(out, p.File.Header, rep)
 	}
 	reemitExisting := func(idx int) (uint64, uint64, error) {
-		return reemitIFD(out, in, p.File, idx)
+		return reemitIFD(out, in, p.File, idx, nil)
 	}
 
 	switch p.Mode {
@@ -167,6 +180,13 @@ func doSplice(p SpliceParams) error {
 		emittedIFDNextPtrLocs = append(emittedIFDNextPtrLocs, nextPtrLoc)
 	case SpliceAppend:
 		recOff, nextPtrLoc, err := emitReplacement(p.Replacement)
+		if err != nil {
+			return err
+		}
+		emittedIFDOffsets = append(emittedIFDOffsets, recOff)
+		emittedIFDNextPtrLocs = append(emittedIFDNextPtrLocs, nextPtrLoc)
+	case SpliceReplaceStripData:
+		recOff, nextPtrLoc, err := reemitIFD(out, in, p.File, p.TargetIdx, p.StripData)
 		if err != nil {
 			return err
 		}
@@ -215,7 +235,7 @@ func doSplice(p SpliceParams) error {
 	var predecessorNextPtrLoc uint64
 	var predecessorNextVal uint64
 	switch p.Mode {
-	case SpliceReplace, SpliceInsertBefore, SpliceRemove:
+	case SpliceReplace, SpliceInsertBefore, SpliceRemove, SpliceReplaceStripData:
 		if p.TargetIdx == 0 {
 			predecessorNextPtrLoc = headerFirstIFDOffsetLoc(p.File.Header)
 		} else {
@@ -447,7 +467,14 @@ func convertInlineEndian(tp TagType, count uint64, leBytes []byte, order binary.
 
 // reemitIFD re-emits IFD idx from file into out at the current seek position,
 // rebasing its out-of-line data and strip data.
-func reemitIFD(out *os.File, in *os.File, file *File, idx int) (uint64, uint64, error) {
+//
+// If override is non-nil, the IFD's strip/tile payloads are replaced by the
+// supplied byte slices (one per strip/tile) instead of being copied from the
+// input, and the StripByteCounts/TileByteCounts tag is updated to the new
+// lengths. All other tags (including private tags) are copied verbatim. When
+// override is nil, the function behaves exactly as before: strip data is copied
+// from the input and byte counts are preserved.
+func reemitIFD(out *os.File, in *os.File, file *File, idx int, override [][]byte) (uint64, uint64, error) {
 	ifd := file.IFDs[idx]
 	h := file.Header
 
@@ -460,6 +487,11 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int) (uint64, uint64, 
 	newOutlineOff := make(map[int]uint64)
 	for i, e := range ifd.Entries {
 		if e.Inline || e.DataSize == 0 || e.Tag == TagStripOffsets || e.Tag == TagTileOffsets {
+			continue
+		}
+		// When overriding strip data, the byte-counts tag is rewritten from
+		// the new lengths; skip copying its old out-of-line value here.
+		if override != nil && (e.Tag == TagStripByteCounts || e.Tag == TagTileByteCounts) {
 			continue
 		}
 		blob := make([]byte, e.DataSize)
@@ -486,24 +518,41 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int) (uint64, uint64, 
 		stripTag, countTag = TagTileOffsets, TagTileByteCounts
 	}
 	var newOffsetsBuf []byte
+	var newCounts []uint64
 	if ok {
+		if override != nil && len(override) != len(oldOffsets) {
+			return 0, 0, fmt.Errorf("%w: override has %d strips but IFD %d has %d",
+				ErrUnexpectedLayout, len(override), idx, len(oldOffsets))
+		}
 		counts, _ := ifd.UintArray(countTag, h.ByteOrder)
 		newOffsets := make([]uint64, len(oldOffsets))
+		newCounts = make([]uint64, len(oldOffsets))
 		for i, off := range oldOffsets {
-			cnt := counts[i]
-			if cnt == 0 {
+			var buf []byte
+			if override != nil {
+				buf = override[i]
+			} else {
+				cnt := counts[i]
+				if cnt == 0 {
+					newOffsets[i] = 0
+					newCounts[i] = 0
+					continue
+				}
+				buf = make([]byte, cnt)
+				if _, err := in.ReadAt(buf, int64(off)); err != nil {
+					return 0, 0, fmt.Errorf("read strip: %w", err)
+				}
+			}
+			newCounts[i] = uint64(len(buf))
+			if len(buf) == 0 {
 				newOffsets[i] = 0
 				continue
 			}
 			newOffsets[i] = cur
-			buf := make([]byte, cnt)
-			if _, err := in.ReadAt(buf, int64(off)); err != nil {
-				return 0, 0, fmt.Errorf("read strip: %w", err)
-			}
 			if _, err := out.Write(buf); err != nil {
 				return 0, 0, err
 			}
-			cur += cnt
+			cur += uint64(len(buf))
 			if cur%2 != 0 {
 				_, _ = out.Write([]byte{0})
 				cur++
@@ -527,6 +576,42 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int) (uint64, uint64, 
 	if h.BigTIFF {
 		valueFieldSize = 8
 	}
+
+	// When overriding, build the replacement byte-counts value, mirroring the
+	// existing byte-counts entry's type (LONG vs LONG8). Write it out-of-line
+	// here if it doesn't fit in the value field.
+	var newCountsBuf []byte
+	if override != nil && newCounts != nil {
+		countEntry := findEntry(ifd, countTag)
+		if countEntry != nil && (countEntry.Type == TypeLong8 || countEntry.Type == TypeIFD8) {
+			newCountsBuf = make([]byte, 8*len(newCounts))
+			for i, v := range newCounts {
+				h.ByteOrder.PutUint64(newCountsBuf[i*8:], v)
+			}
+		} else {
+			newCountsBuf = make([]byte, 4*len(newCounts))
+			for i, v := range newCounts {
+				h.ByteOrder.PutUint32(newCountsBuf[i*4:], uint32(v))
+			}
+		}
+		if len(newCountsBuf) > valueFieldSize {
+			for i, e := range ifd.Entries {
+				if e.Tag == countTag {
+					newOutlineOff[i] = cur
+					if _, err := out.Write(newCountsBuf); err != nil {
+						return 0, 0, err
+					}
+					cur += uint64(len(newCountsBuf))
+					if cur%2 != 0 {
+						_, _ = out.Write([]byte{0})
+						cur++
+					}
+					break
+				}
+			}
+		}
+	}
+
 	if newOffsetsBuf != nil {
 		for i, e := range ifd.Entries {
 			if e.Tag == stripTag {
@@ -573,6 +658,19 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int) (uint64, uint64, 
 		switch {
 		case e.Tag == stripTag && newOffsetsBuf != nil && len(newOffsetsBuf) <= valueFieldSize:
 			copy(valBuf, newOffsetsBuf)
+		case override != nil && e.Tag == countTag && newCountsBuf != nil && len(newCountsBuf) <= valueFieldSize:
+			copy(valBuf, newCountsBuf)
+		case override != nil && e.Tag == countTag && newCountsBuf != nil:
+			// Out-of-line byte counts; offset filled below via newOutlineOff.
+			if newOff, ok := newOutlineOff[i]; ok {
+				if h.BigTIFF {
+					h.ByteOrder.PutUint64(valBuf, newOff)
+				} else {
+					h.ByteOrder.PutUint32(valBuf, uint32(newOff))
+				}
+			} else {
+				return 0, 0, fmt.Errorf("%w: no new offset for byte-counts tag %d on IFD %d", ErrUnexpectedLayout, e.Tag, idx)
+			}
 		case e.Inline:
 			copy(valBuf, e.RawValueField)
 		default:

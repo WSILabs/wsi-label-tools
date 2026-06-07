@@ -3,9 +3,12 @@ package tifflow
 import (
 	"bytes"
 	"encoding/binary"
+	"image"
 	"os"
 	"path/filepath"
 	"testing"
+
+	xtiff "golang.org/x/image/tiff"
 )
 
 // buildTinyTIFF creates a tiny classic-TIFF file with N strip-based IFDs, each
@@ -135,6 +138,75 @@ func TestSplice_PrefixByteIdentical(t *testing.T) {
 		}
 		if !bytes.Equal(inCopy, outCopy) {
 			t.Errorf("prefix (minus next-IFD pointer) differs at byte %d", firstDiff(inCopy, outCopy))
+		}
+	}
+}
+
+func TestSpliceReplaceStripData(t *testing.T) {
+	src := image.NewRGBA(image.Rect(0, 0, 16, 8))
+	for i := range src.Pix {
+		src.Pix[i] = byte(i)
+	}
+	var buf bytes.Buffer
+	if err := xtiff.Encode(&buf, src, &xtiff.Options{Compression: xtiff.Uncompressed}); err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	dir := t.TempDir()
+	inPath := filepath.Join(dir, "in.tiff")
+	if err := os.WriteFile(inPath, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Open(inPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := Parse(f)
+	f.Close()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	// One payload per strip the writer produced.
+	offsIn, _ := file.IFDs[0].UintArray(TagStripOffsets, file.Header.ByteOrder)
+	newStrips := make([][]byte, len(offsIn))
+	for i := range newStrips {
+		newStrips[i] = []byte("REDACTED-STRIP-DATA-" + string(rune('A'+i)))
+	}
+	outPath := filepath.Join(dir, "out.tiff")
+	if err := Splice(SpliceParams{
+		InPath: inPath, OutPath: outPath, File: file,
+		Mode: SpliceReplaceStripData, TargetIdx: 0, StripData: newStrips,
+	}); err != nil {
+		t.Fatalf("Splice: %v", err)
+	}
+	g, err := os.Open(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	out, err := Parse(g)
+	if err != nil {
+		t.Fatalf("re-parse: %v", err)
+	}
+	w, _ := out.IFDs[0].UintValue(TagImageWidth, out.Header.ByteOrder)
+	h, _ := out.IFDs[0].UintValue(TagImageLength, out.Header.ByteOrder)
+	if w != 16 || h != 8 {
+		t.Fatalf("dims changed: %dx%d", w, h)
+	}
+	offs, _ := out.IFDs[0].UintArray(TagStripOffsets, out.Header.ByteOrder)
+	cnts, _ := out.IFDs[0].UintArray(TagStripByteCounts, out.Header.ByteOrder)
+	if len(offs) != len(newStrips) || len(cnts) != len(newStrips) {
+		t.Fatalf("strip table length changed: offs=%d cnts=%d want %d", len(offs), len(cnts), len(newStrips))
+	}
+	for i := range newStrips {
+		if cnts[i] != uint64(len(newStrips[i])) {
+			t.Fatalf("strip %d count = %d, want %d", i, cnts[i], len(newStrips[i]))
+		}
+		got := make([]byte, cnts[i])
+		if _, err := g.ReadAt(got, int64(offs[i])); err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != string(newStrips[i]) {
+			t.Fatalf("strip %d data = %q, want %q", i, got, newStrips[i])
 		}
 	}
 }
