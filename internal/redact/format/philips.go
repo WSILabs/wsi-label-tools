@@ -14,8 +14,11 @@ func init() { redact.Register(philips{}) }
 
 const philipsSoftwarePrefix = "Philips DP"
 
-// philips classifies Philips-TIFF. Detect: IFD0 Software starts "Philips DP"
-// (real Philips files have an empty or absent ImageDescription in IFD0).
+// philips classifies Philips-TIFF. Detect keys on IFD0 Software starting
+// "Philips DP" — a highly specific signal. (opentile-go additionally parses
+// IFD0's DICOM-XML ImageDescription, but the openslide Philips test files
+// carry an empty IFD0 description, so we match on Software alone; it is
+// strictly more permissive and false-positives are implausible.)
 // Classify: non-tiled pages by ImageDescription substring ("Label"/"Macro"/
 // "Thumbnail", case-sensitive, first match per role wins) — ported from
 // opentile-go formats/philipstiff (v0.36.0).

@@ -46,7 +46,6 @@ archives:
       - README.md
       - LICENSE
       - label-slides.py
-      - sample_svs/README.md
 
 checksum:
   name_template: '{{ .ProjectName }}_{{ .Version }}_checksums.txt'
