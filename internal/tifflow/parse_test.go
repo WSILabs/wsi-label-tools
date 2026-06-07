@@ -9,7 +9,7 @@ import (
 // A small SVS sample expected to exist for tests; skip if not present.
 func svsSample(t *testing.T, name string) string {
 	t.Helper()
-	p := filepath.Join("..", "..", "sample_svs", name)
+	p := filepath.Join("..", "..", "sample_files", "svs", name)
 	if _, err := os.Stat(p); err != nil {
 		t.Skipf("sample %s not available: %v", name, err)
 	}

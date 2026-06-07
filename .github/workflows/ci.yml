@@ -126,5 +126,5 @@ jobs:
 # To extend validation to the full OpenSlide demo corpus (larger files,
 # JPEG2000 variants) on-demand, add a second workflow triggered by
 # workflow_dispatch that fetches from https://openslide.cs.cmu.edu/...
-# into sample_svs/ before the cross-validate step. Kept out of the default
+# into sample_files/ before the cross-validate step. Kept out of the default
 # workflow so PR runs stay fast.

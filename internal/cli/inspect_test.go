@@ -9,7 +9,7 @@ import (
 )
 
 func TestRunInspect_CMU1Small(t *testing.T) {
-	p := filepath.Join("..", "..", "sample_svs", "CMU-1-Small-Region.svs")
+	p := filepath.Join("..", "..", "sample_files", "svs", "CMU-1-Small-Region.svs")
 	if _, err := os.Stat(p); err != nil {
 		t.Skipf("sample missing: %v", err)
 	}
