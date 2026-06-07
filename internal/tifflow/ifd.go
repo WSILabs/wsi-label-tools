@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 )
 
 // IFDEntry is a single tag entry in an IFD.
@@ -211,6 +212,21 @@ func (ifd *IFD) UintArray(tag uint16, order binary.ByteOrder) ([]uint64, bool) {
 		return out, true
 	}
 	return nil, false
+}
+
+// FloatValue returns the value of an inline FLOAT (type 11) tag as float64.
+// Only handles count==1 inline floats (sufficient for NDPI magnification).
+func (ifd *IFD) FloatValue(tag uint16, order binary.ByteOrder) (float64, bool) {
+	for _, e := range ifd.Entries {
+		if e.Tag != tag {
+			continue
+		}
+		if e.Type != TypeFloat || e.Count != 1 || !e.Inline || len(e.RawValueField) < 4 {
+			return 0, false
+		}
+		return float64(math.Float32frombits(order.Uint32(e.RawValueField[:4]))), true
+	}
+	return 0, false
 }
 
 // StringValue returns the ASCII value of a tag, stripped of trailing NULs.

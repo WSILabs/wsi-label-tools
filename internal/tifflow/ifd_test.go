@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -112,4 +113,20 @@ func errorIsEOFish(err error) bool {
 
 func contains(s, sub string) bool {
 	return bytes.Contains([]byte(s), []byte(sub))
+}
+
+func TestFloatValue_InlineFloat32(t *testing.T) {
+	le := binary.LittleEndian
+	raw := make([]byte, 4)
+	le.PutUint32(raw, math.Float32bits(-1.0))
+	ifd := &IFD{Entries: []IFDEntry{{
+		Tag: 65421, Type: TypeFloat, Count: 1, Inline: true, RawValueField: raw,
+	}}}
+	got, ok := ifd.FloatValue(65421, le)
+	if !ok || got != -1.0 {
+		t.Fatalf("FloatValue = %v, ok=%v; want -1.0,true", got, ok)
+	}
+	if _, ok := ifd.FloatValue(9999, le); ok {
+		t.Fatalf("missing tag should return ok=false")
+	}
 }
