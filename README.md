@@ -9,7 +9,7 @@
 ![Pure Go](https://img.shields.io/badge/pure_Go-no_CGo-00ADD8)
 ![Status](https://img.shields.io/badge/status-pre--release-f59e0b)
 
-`wsi-label` is a command-line tool that replaces or strips the **label image** inside digital pathology slide files — the small on-screen sticker photo that typically carries patient identifiers (PHI). The tool never decodes the pyramid image data, so it's fast even on multi-gigabyte slides, and it produces output that's bit-identical to the input everywhere except the label. A companion Python driver (`label-slides.py`) renders anonymized labels from CSV-driven or command-line metadata and batches the replacement.
+`wsi-label` is a command-line tool that replaces or strips the **label image** inside digital pathology slide files — the small on-screen sticker photo that typically carries patient identifiers (PHI). It **never decodes the multi-gigabyte pyramid**, so it's fast on any slide size. For formats whose label is its own TIFF directory (Aperio SVS, generic-TIFF, Philips) the output is bit-identical to the input everywhere except that label IFD. For formats whose label is a *region* of a larger associated image (Hamamatsu NDPI macro, Ventana BIF overview) only that one small image is decoded, edited, and re-encoded — the pyramid is still untouched. A companion Python driver (`label-slides.py`) renders anonymized labels from CSV-driven or command-line metadata and batches the replacement.
 
 Use cases: **de-identification for data sharing**, **anonymization before publication**, **scrubbing PHI from research datasets**, and **bulk label updates** in pathology pipelines.
 
@@ -19,13 +19,13 @@ The label-handling capability here also lives inside [wsitools](https://github.c
 
 ## Features
 
-- **Replace or strip** the label associated-image in an SVS file, without touching pyramid pixel data.
-- **Preserves original label geometry** — matches the existing label's dimensions and orientation (works on 1200×848 landscape Aperio output *and* older portrait ScanScope files).
+- **Replace or strip** the label across SVS, generic-TIFF, Philips, NDPI, and BIF — never touching pyramid pixel data. (See the Supported formats table.)
+- **Two redaction strategies, picked automatically.** *Splice* (SVS / generic-TIFF / Philips): the label is its own IFD, removed or replaced as opaque bytes — codec-independent and byte-exact outside the label. *Region* (NDPI / BIF): the label is a fixed crop of a small associated image (NDPI macro's left ~30%, BIF overview's top 1/3), which is decoded, blanked or recomposited, and re-encoded in pure Go.
+- **Preserves original label geometry** on the splice formats — matches the existing label's dimensions and orientation (1200×848 landscape Aperio *and* older portrait ScanScope).
 - **BigTIFF-aware** — handles both classic TIFF (magic 42) and BigTIFF (magic 43) transparently.
-- **Codec-independent** — JPEG, JPEG2000, and any other tile codec pass through as opaque byte ranges.
 - **Pure Go** — no CGo, no libtiff/libopenslide runtime dependency. One static binary per platform.
 - **Atomic writes** — temp-file + fsync + rename; killed runs never leave a half-written output.
-- **Extensible** — format detection/classification lives behind a `redact.Classifier` registry (one `init()` registration per format); adding OME-TIFF, Philips, NDPI, etc. is a drop-in, not a rewrite.
+- **Extensible** — format detection/classification lives behind a `redact.Classifier` registry (one `init()` registration per format); adding a new format (e.g. Leica SCN) is a drop-in classifier, not a rewrite.
 
 ## Install
 

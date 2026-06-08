@@ -14,7 +14,7 @@ Three input styles:
 
   1. Interactive (bare invocation):
 
-         ./label-slides.py --svs-dir sample_svs
+         ./label-slides.py --svs-dir /path/to/slides
 
      Arrow-key checkbox picker over SVS files in the given directory,
      then per-file label lines.
@@ -26,8 +26,8 @@ Three input styles:
   3. Per-file labels from a spreadsheet (CSV, header row optional, first
      column = filename, remaining columns = label lines):
 
-         ./label-slides.py --csv labels.csv --svs-dir sample_svs
-         ./label-slides.py --csv labels.csv --svs-dir sample_svs --overwrite -j 4
+         ./label-slides.py --csv labels.csv --svs-dir /path/to/slides
+         ./label-slides.py --csv labels.csv --svs-dir /path/to/slides --overwrite -j 4
 
 Stripping labels (no new label — just remove the existing one):
 
