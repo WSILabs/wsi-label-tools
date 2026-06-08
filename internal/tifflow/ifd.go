@@ -242,3 +242,21 @@ func (ifd *IFD) StringValue(tag uint16) (string, bool) {
 	}
 	return "", false
 }
+
+// RawValue returns the cached value bytes of a tag regardless of TIFF type,
+// for small inline or small out-of-line values (DataSize ≤ 4096). ok=false
+// if the tag is absent or its value was too large to cache. This is the
+// correct accessor for non-ASCII blobs such as XMP (tag 700, TypeByte/
+// TypeUndefined) where StringValue returns ok=false due to the type check.
+func (ifd *IFD) RawValue(tag uint16) ([]byte, bool) {
+	for _, e := range ifd.Entries {
+		if e.Tag != tag {
+			continue
+		}
+		if len(e.InlineValue) == 0 {
+			return nil, false
+		}
+		return e.InlineValue, true
+	}
+	return nil, false
+}
