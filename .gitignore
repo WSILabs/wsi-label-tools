@@ -10,9 +10,8 @@
 __pycache__/
 *.pyc
 
-# Claude Code local settings + personal project notes
+# Claude Code local settings
 /.claude/
-/CLAUDE.md
 
 # Downloaded WSI fixtures (see scripts/fetch-fixtures.sh)
 sample_files/
