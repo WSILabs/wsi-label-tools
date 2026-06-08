@@ -67,7 +67,12 @@ type SpliceParams struct {
 	// StripData is the replacement strip/tile data for the target IFD, one
 	// entry per strip/tile, used only by SpliceReplaceStripData.
 	StripData [][]byte
-	Fsync     bool
+	// DropTags lists tag numbers to omit when re-emitting the target IFD.
+	// Only effective with SpliceReplaceStripData. Structural strip/tile tags
+	// (StripOffsets, StripByteCounts, TileOffsets, TileByteCounts) are never
+	// dropped even if listed, to avoid corrupting the image layout.
+	DropTags []uint16
+	Fsync    bool
 }
 
 // Splice performs the prefix-copy + tail-re-emit operation and writes the
@@ -167,7 +172,7 @@ func doSplice(p SpliceParams) error {
 		return emitReplacementIFD(out, p.File.Header, rep)
 	}
 	reemitExisting := func(idx int) (uint64, uint64, error) {
-		return reemitIFD(out, in, p.File, idx, nil)
+		return reemitIFD(out, in, p.File, idx, nil, nil)
 	}
 
 	switch p.Mode {
@@ -186,7 +191,7 @@ func doSplice(p SpliceParams) error {
 		emittedIFDOffsets = append(emittedIFDOffsets, recOff)
 		emittedIFDNextPtrLocs = append(emittedIFDNextPtrLocs, nextPtrLoc)
 	case SpliceReplaceStripData:
-		recOff, nextPtrLoc, err := reemitIFD(out, in, p.File, p.TargetIdx, p.StripData)
+		recOff, nextPtrLoc, err := reemitIFD(out, in, p.File, p.TargetIdx, p.StripData, p.DropTags)
 		if err != nil {
 			return err
 		}
@@ -474,7 +479,12 @@ func convertInlineEndian(tp TagType, count uint64, leBytes []byte, order binary.
 // lengths. All other tags (including private tags) are copied verbatim. When
 // override is nil, the function behaves exactly as before: strip data is copied
 // from the input and byte counts are preserved.
-func reemitIFD(out *os.File, in *os.File, file *File, idx int, override [][]byte) (uint64, uint64, error) {
+//
+// dropTags, when non-nil, lists tag numbers to omit from the emitted IFD.
+// Structural strip/tile tags (StripOffsets, StripByteCounts, TileOffsets,
+// TileByteCounts) are silently excluded from dropping to prevent layout
+// corruption.
+func reemitIFD(out *os.File, in *os.File, file *File, idx int, override [][]byte, dropTags []uint16) (uint64, uint64, error) {
 	ifd := file.IFDs[idx]
 	h := file.Header
 
@@ -484,9 +494,30 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int, override [][]byte
 	}
 	cur := uint64(curPos)
 
+	// Build a set of tags to drop. Structural strip/tile tags are never
+	// dropped even if the caller lists them, to prevent layout corruption.
+	var dropSet map[uint16]bool
+	if len(dropTags) > 0 {
+		structural := map[uint16]bool{
+			TagStripOffsets: true, TagStripByteCounts: true,
+			TagTileOffsets: true, TagTileByteCounts: true,
+		}
+		dropSet = make(map[uint16]bool, len(dropTags))
+		for _, t := range dropTags {
+			if !structural[t] {
+				dropSet[t] = true
+			}
+		}
+	}
+	shouldDrop := func(tag uint16) bool { return dropSet[tag] }
+
 	newOutlineOff := make(map[int]uint64)
 	for i, e := range ifd.Entries {
 		if e.Inline || e.DataSize == 0 || e.Tag == TagStripOffsets || e.Tag == TagTileOffsets {
+			continue
+		}
+		// Skip tags being dropped.
+		if shouldDrop(e.Tag) {
 			continue
 		}
 		// When overriding strip data, the byte-counts tag is rewritten from
@@ -657,10 +688,17 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int, override [][]byte
 		entrySize = 20
 	}
 
+	// Compute effective entry count, excluding any dropped tags.
+	emitCount := uint64(0)
+	for _, e := range ifd.Entries {
+		if !shouldDrop(e.Tag) {
+			emitCount++
+		}
+	}
 	if h.BigTIFF {
-		_ = binary.Write(out, h.ByteOrder, uint64(len(ifd.Entries)))
+		_ = binary.Write(out, h.ByteOrder, emitCount)
 	} else {
-		_ = binary.Write(out, h.ByteOrder, uint16(len(ifd.Entries)))
+		_ = binary.Write(out, h.ByteOrder, uint16(emitCount))
 	}
 	// In the override path the offsets/counts value blobs are emitted at a
 	// promoted wide type (LONG classic, LONG8 BigTIFF); the corresponding entry
@@ -671,6 +709,9 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int, override [][]byte
 		promotedType = TypeLong8
 	}
 	for i, e := range ifd.Entries {
+		if shouldDrop(e.Tag) {
+			continue
+		}
 		_ = binary.Write(out, h.ByteOrder, e.Tag)
 		emitType := e.Type
 		if override != nil && (e.Tag == stripTag || e.Tag == countTag) {
@@ -717,7 +758,7 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int, override [][]byte
 		}
 	}
 
-	cur = ifdOff + uint64(countSize) + uint64(len(ifd.Entries))*uint64(entrySize)
+	cur = ifdOff + uint64(countSize) + emitCount*uint64(entrySize)
 	nextLoc := cur
 	zeroNext := make([]byte, valueFieldSize)
 	if _, err := out.Write(zeroNext); err != nil {

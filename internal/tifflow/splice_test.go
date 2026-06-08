@@ -375,6 +375,57 @@ func TestSpliceReplaceStripData_ShortByteCounts(t *testing.T) {
 	}
 }
 
+func TestSpliceReplaceStripData_DropTags(t *testing.T) {
+	src := image.NewRGBA(image.Rect(0, 0, 16, 8))
+	var buf bytes.Buffer
+	if err := xtiff.Encode(&buf, src, &xtiff.Options{Compression: xtiff.Uncompressed}); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	inPath := filepath.Join(dir, "in.tiff")
+	os.WriteFile(inPath, buf.Bytes(), 0o644)
+	f, _ := os.Open(inPath)
+	file, err := Parse(f)
+	f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dropTag uint16 = TagPhotometric // present in baseline RGB TIFF
+	found := false
+	for _, e := range file.IFDs[0].Entries {
+		if e.Tag == dropTag {
+			found = true
+		}
+	}
+	if !found {
+		t.Skipf("writer did not emit tag %d; pick another present tag", dropTag)
+	}
+	offs, _ := file.IFDs[0].UintArray(TagStripOffsets, file.Header.ByteOrder)
+	newStrips := make([][]byte, len(offs))
+	for i := range newStrips {
+		newStrips[i] = []byte("X")
+	}
+	outPath := filepath.Join(dir, "out.tiff")
+	if err := Splice(SpliceParams{
+		InPath: inPath, OutPath: outPath, File: file,
+		Mode: SpliceReplaceStripData, TargetIdx: 0, StripData: newStrips,
+		DropTags: []uint16{dropTag},
+	}); err != nil {
+		t.Fatalf("Splice: %v", err)
+	}
+	g, _ := os.Open(outPath)
+	defer g.Close()
+	out, err := Parse(g)
+	if err != nil {
+		t.Fatalf("re-parse: %v", err)
+	}
+	for _, e := range out.IFDs[0].Entries {
+		if e.Tag == dropTag {
+			t.Fatalf("tag %d should have been dropped", dropTag)
+		}
+	}
+}
+
 func firstDiff(a, b []byte) int {
 	for i := 0; i < len(a) && i < len(b); i++ {
 		if a[i] != b[i] {
