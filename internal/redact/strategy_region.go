@@ -75,7 +75,11 @@ func regionStrip(inPath, outPath string, file *tifflow.File, t *Target, fsync bo
 	return writeRegion(inPath, outPath, file, t.HostIFDIndex, dst, fsync)
 }
 
-// regionReplace composites the supplied label image into the target region.
+// regionReplace composites the supplied label image into the target region,
+// scaling it to fill the region rectangle exactly. NOTE: for EmbeddedRegion
+// targets the geometry knobs (Rotate, Resize, BG, Force) are no-ops — the
+// image is stretched to the region's fixed footprint within the host image,
+// not letterboxed/rotated. Those options apply only to the Splice path.
 func regionReplace(inPath, outPath string, file *tifflow.File, c Classifier, t *Target, opts ReplaceOptions) (*Result, error) {
 	img, err := hostJPEG(inPath, file, t.HostIFDIndex)
 	if err != nil {
