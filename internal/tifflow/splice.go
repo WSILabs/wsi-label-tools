@@ -541,11 +541,14 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int, override [][]byte
 	}
 
 	var stripTag, countTag uint16
-	oldOffsets, ok := ifd.UintArray(TagStripOffsets, h.ByteOrder)
+	// Read offset/count arrays out-of-line directly from the input file so
+	// large tiled IFDs (whose arrays exceed the 4096-byte parse cache) are
+	// handled correctly.
+	oldOffsets, ok := readUintArray(in, ifd, TagStripOffsets, h.ByteOrder)
 	if ok {
 		stripTag, countTag = TagStripOffsets, TagStripByteCounts
 	} else {
-		oldOffsets, ok = ifd.UintArray(TagTileOffsets, h.ByteOrder)
+		oldOffsets, ok = readUintArray(in, ifd, TagTileOffsets, h.ByteOrder)
 		stripTag, countTag = TagTileOffsets, TagTileByteCounts
 	}
 	var newOffsetsBuf []byte
@@ -555,7 +558,7 @@ func reemitIFD(out *os.File, in *os.File, file *File, idx int, override [][]byte
 			return 0, 0, fmt.Errorf("%w: override has %d strips but IFD %d has %d",
 				ErrUnexpectedLayout, len(override), idx, len(oldOffsets))
 		}
-		counts, _ := ifd.UintArray(countTag, h.ByteOrder)
+		counts, _ := readUintArray(in, ifd, countTag, h.ByteOrder)
 		newOffsets := make([]uint64, len(oldOffsets))
 		newCounts = make([]uint64, len(oldOffsets))
 		for i, off := range oldOffsets {

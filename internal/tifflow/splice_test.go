@@ -426,6 +426,187 @@ func TestSpliceReplaceStripData_DropTags(t *testing.T) {
 	}
 }
 
+// buildLargeTailArrayTIFF hand-builds a classic little-endian TIFF with two
+// IFDs. IFD 0 is a tiny 1-strip image (the splice target). IFD 1 is a tall
+// 1xN image with RowsPerStrip=1, giving N strips so its StripOffsets and
+// StripByteCounts LONG arrays each exceed 4096 bytes (N=1200 -> 4800 bytes),
+// landing in the re-emitted tail beyond the 4096-byte parse cache.
+//
+// Returns the path and the byte payload used for each tail strip.
+func buildLargeTailArrayTIFF(t *testing.T, dir string, nTailStrips int) (path string, tailStrip func(i int) []byte) {
+	t.Helper()
+	order := binary.LittleEndian
+
+	tailStrip = func(i int) []byte {
+		// 3-byte deterministic payload per strip.
+		return []byte{byte(i), byte(i >> 8), byte(i * 7)}
+	}
+	const stripLen = 3
+
+	// IFD 0: 4 entries (ImageWidth, ImageLength, StripOffsets, StripByteCounts).
+	// IFD 1: 5 entries (ImageWidth, ImageLength, RowsPerStrip, StripOffsets,
+	// StripByteCounts). Its StripOffsets/StripByteCounts are LONG arrays of
+	// nTailStrips entries -> out-of-line.
+	var buf bytes.Buffer
+	buf.Write([]byte{'I', 'I', 42, 0})
+
+	const ifd0Start = 8
+	const ifd0Size = 2 + 4*12 + 4 // = 54
+	const ifd0StripOff = ifd0Start + ifd0Size
+
+	ifd1Start := uint32(ifd0StripOff + stripLen)
+	const ifd1Size = 2 + 5*12 + 4 // = 66
+	ifd1OffsetsBlob := ifd1Start + ifd1Size
+	ifd1CountsBlob := ifd1OffsetsBlob + uint32(4*nTailStrips)
+	ifd1StripsStart := ifd1CountsBlob + uint32(4*nTailStrips)
+
+	_ = binary.Write(&buf, order, uint32(ifd0Start)) // first IFD offset
+
+	writeEntry := func(tag, typ uint16, count, val uint32) {
+		_ = binary.Write(&buf, order, tag)
+		_ = binary.Write(&buf, order, typ)
+		_ = binary.Write(&buf, order, count)
+		_ = binary.Write(&buf, order, val)
+	}
+
+	// --- IFD 0 ---
+	_ = binary.Write(&buf, order, uint16(4))
+	writeEntry(256, 4, 1, 1)                    // ImageWidth=1 LONG
+	writeEntry(257, 4, 1, 1)                    // ImageLength=1 LONG
+	writeEntry(273, 4, 1, uint32(ifd0StripOff)) // StripOffsets
+	writeEntry(279, 4, 1, stripLen)             // StripByteCounts
+	_ = binary.Write(&buf, order, ifd1Start)    // next IFD -> IFD1
+	// IFD0 strip payload.
+	buf.Write([]byte{0xAB, 0xCD, 0xEF})
+
+	// --- IFD 1 ---
+	_ = binary.Write(&buf, order, uint16(5))
+	writeEntry(256, 4, 1, 1)                                 // ImageWidth=1
+	writeEntry(257, 4, 1, uint32(nTailStrips))               // ImageLength=N
+	writeEntry(278, 4, 1, 1)                                 // RowsPerStrip=1
+	writeEntry(273, 4, uint32(nTailStrips), ifd1OffsetsBlob) // StripOffsets array
+	writeEntry(279, 4, uint32(nTailStrips), ifd1CountsBlob)  // StripByteCounts array
+	_ = binary.Write(&buf, order, uint32(0))                 // next IFD = 0
+
+	// IFD1 StripOffsets blob.
+	for i := 0; i < nTailStrips; i++ {
+		_ = binary.Write(&buf, order, ifd1StripsStart+uint32(i*stripLen))
+	}
+	// IFD1 StripByteCounts blob.
+	for i := 0; i < nTailStrips; i++ {
+		_ = binary.Write(&buf, order, uint32(stripLen))
+	}
+	// IFD1 strip payloads.
+	for i := 0; i < nTailStrips; i++ {
+		buf.Write(tailStrip(i))
+	}
+
+	path = filepath.Join(dir, "large_tail.tiff")
+	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path, tailStrip
+}
+
+// TestSpliceReplaceStripData_LargeTailArrays is a regression test for the bug
+// where reemitIFD read a re-emitted (tail) IFD's StripOffsets/StripByteCounts
+// via the 4096-byte parse cache, so arrays larger than 4096 bytes came back
+// empty and the emit loop failed with "no new offset". IFD 1 here has 1200
+// strips -> 4800-byte LONG arrays. After splicing IFD 0's strip data, the tail
+// IFD 1 must be intact and byte-identical.
+func TestSpliceReplaceStripData_LargeTailArrays(t *testing.T) {
+	dir := t.TempDir()
+	const nTail = 1200
+	inPath, tailStrip := buildLargeTailArrayTIFF(t, dir, nTail)
+
+	f, err := os.Open(inPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := Parse(f)
+	f.Close()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(file.IFDs) != 2 {
+		t.Fatalf("want 2 IFDs, got %d", len(file.IFDs))
+	}
+	// Confirm the tail arrays really exceed the 4096-byte cache (so they were
+	// NOT cached during parse) -> exercises the out-of-line read path.
+	so := findEntry(file.IFDs[1], TagStripOffsets)
+	if so == nil || so.DataSize <= 4096 {
+		t.Fatalf("test setup: IFD1 StripOffsets DataSize=%d, want >4096", so.DataSize)
+	}
+	if len(so.InlineValue) != 0 {
+		t.Fatalf("test setup: IFD1 StripOffsets unexpectedly cached during parse")
+	}
+
+	// Replace IFD 0's single strip.
+	newStrips := [][]byte{[]byte("REDACTED")}
+	outPath := filepath.Join(dir, "out_large_tail.tiff")
+	if err := Splice(SpliceParams{
+		InPath: inPath, OutPath: outPath, File: file,
+		Mode: SpliceReplaceStripData, TargetIdx: 0, StripData: newStrips,
+	}); err != nil {
+		t.Fatalf("Splice: %v", err)
+	}
+
+	g, err := os.Open(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.Close()
+	out, err := Parse(g)
+	if err != nil {
+		t.Fatalf("re-parse: %v", err)
+	}
+	if len(out.IFDs) != 2 {
+		t.Fatalf("output has %d IFDs, want 2", len(out.IFDs))
+	}
+
+	// Tail IFD 1 must be intact: byte-counts decode and strip bytes match
+	// input. Read the offset/count arrays straight from the output file (not
+	// via the 4096-capped parse cache) so this assertion is independent of the
+	// fix under test.
+	order := out.Header.ByteOrder
+	readArr := func(ifd *IFD, tag uint16) []uint64 {
+		e := findEntry(ifd, tag)
+		if e == nil {
+			t.Fatalf("IFD missing tag %d", tag)
+		}
+		blob := make([]byte, e.DataSize)
+		if _, err := g.ReadAt(blob, int64(e.DataOffset)); err != nil {
+			t.Fatalf("read tag %d array: %v", tag, err)
+		}
+		arr := make([]uint64, e.Count)
+		for i := range arr {
+			arr[i] = uint64(order.Uint32(blob[i*4:]))
+		}
+		return arr
+	}
+	offs := readArr(out.IFDs[1], TagStripOffsets)
+	if len(offs) != nTail {
+		t.Fatalf("IFD1 StripOffsets len=%d want %d", len(offs), nTail)
+	}
+	cnts := readArr(out.IFDs[1], TagStripByteCounts)
+	if len(cnts) != nTail {
+		t.Fatalf("IFD1 StripByteCounts len=%d want %d", len(cnts), nTail)
+	}
+	for i := 0; i < nTail; i++ {
+		want := tailStrip(i)
+		if cnts[i] != uint64(len(want)) {
+			t.Fatalf("tail strip %d count = %d, want %d", i, cnts[i], len(want))
+		}
+		got := make([]byte, cnts[i])
+		if _, err := g.ReadAt(got, int64(offs[i])); err != nil {
+			t.Fatalf("read tail strip %d: %v", i, err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("tail strip %d = %x, want %x", i, got, want)
+		}
+	}
+}
+
 func firstDiff(a, b []byte) int {
 	for i := 0; i < len(a) && i < len(b); i++ {
 		if a[i] != b[i] {

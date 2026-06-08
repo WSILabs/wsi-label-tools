@@ -191,25 +191,59 @@ func (ifd *IFD) UintArray(tag uint16, order binary.ByteOrder) ([]uint64, bool) {
 		if len(buf) == 0 {
 			return nil, false
 		}
-		n := int(e.Count)
-		out := make([]uint64, n)
-		sz := e.Type.Size()
-		for i := 0; i < n; i++ {
-			b := buf[i*sz : (i+1)*sz]
-			switch e.Type {
-			case TypeByte, TypeSByte, TypeUndefined:
-				out[i] = uint64(b[0])
-			case TypeShort, TypeSShort:
-				out[i] = uint64(order.Uint16(b))
-			case TypeLong, TypeSLong:
-				out[i] = uint64(order.Uint32(b))
-			case TypeLong8, TypeSLong8, TypeIFD8:
-				out[i] = order.Uint64(b)
-			default:
-				return nil, false
-			}
+		return decodeUintArray(buf, e.Type, int(e.Count), order)
+	}
+	return nil, false
+}
+
+// decodeUintArray decodes n elements of TagType tp from buf as uint64s.
+// ok=false if the type is not an integer type or buf is too short.
+func decodeUintArray(buf []byte, tp TagType, n int, order binary.ByteOrder) ([]uint64, bool) {
+	sz := tp.Size()
+	if sz == 0 || len(buf) < n*sz {
+		return nil, false
+	}
+	out := make([]uint64, n)
+	for i := 0; i < n; i++ {
+		b := buf[i*sz : (i+1)*sz]
+		switch tp {
+		case TypeByte, TypeSByte, TypeUndefined:
+			out[i] = uint64(b[0])
+		case TypeShort, TypeSShort:
+			out[i] = uint64(order.Uint16(b))
+		case TypeLong, TypeSLong:
+			out[i] = uint64(order.Uint32(b))
+		case TypeLong8, TypeSLong8, TypeIFD8:
+			out[i] = order.Uint64(b)
+		default:
+			return nil, false
 		}
-		return out, true
+	}
+	return out, true
+}
+
+// readUintArray returns the full value of a SHORT/LONG/LONG8 array tag,
+// reading out-of-line bytes from r when the value wasn't cached during parse.
+// Handles inline values too. ok=false if the tag is absent.
+func readUintArray(r io.ReaderAt, ifd *IFD, tag uint16, order binary.ByteOrder) ([]uint64, bool) {
+	for _, e := range ifd.Entries {
+		if e.Tag != tag {
+			continue
+		}
+		n := int(e.Count)
+		if n == 0 {
+			return []uint64{}, true
+		}
+		// Inline, or out-of-line value already cached during parse.
+		if len(e.InlineValue) != 0 {
+			return decodeUintArray(e.InlineValue, e.Type, n, order)
+		}
+		// Out-of-line value that was too large to cache: read it now.
+		buf := make([]byte, e.DataSize)
+		if _, err := r.ReadAt(buf, int64(e.DataOffset)); err != nil {
+			return nil, false
+		}
+		return decodeUintArray(buf, e.Type, n, order)
 	}
 	return nil, false
 }
