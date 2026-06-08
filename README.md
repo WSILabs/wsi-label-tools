@@ -110,7 +110,7 @@ Validated against an openslide-python round-trip plus a strict `tiffinfo -D` dec
 | generic-TIFF | ✅ | tag 65080 / heuristic; pure splice |
 | Philips-TIFF | ✅ | `Software` prefix detect; pure splice (label CI fixture pending) |
 | Hamamatsu NDPI | ✅ | Region strategy (blank/composite the macro's label crop); pure-Go JPEG |
-| Ventana BIF | 🛣️ Band 3 | overview-role splice |
+| Ventana BIF | ✅ | Region strategy (blank/composite the overview's top-1/3 label band); DP200 + legacy |
 | Leica SCN | 🛣️ Parked | overview-role + SCN-XML |
 | OME-TIFF | ❌ out of charter | SubIFD pyramid — needs file-rewrite (use wsitools) |
 | Zeiss CZI / MRXS | ❌ | non-TIFF / directory-based |

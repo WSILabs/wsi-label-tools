@@ -52,8 +52,13 @@ scanners and which PHI exposures you actually encounter.
   decode → blank/composite → re-encode → strip-substitution splice; pyramid
   pixel data untouched. New tifflow `SpliceReplaceStripData`. See
   `docs/superpowers/plans/2026-06-07-band2-ndpi-region.md`.
-- [ ] **Band 3 — BIF (region + XMP scrub).** Overview label-band blanking +
-  XMP barcode/metadata scrubbing (a new capability); needs its own design.
+- [x] **Band 3 — BIF (Region, top-1/3 overview).** Label = top 1/3 of the
+  overview (the 25mm/75mm label zone); region blank/composite; pyramid
+  byte-identical. Region strategy extended for uncompressed-strip + abbreviated
+  -JPEG overviews; tifflow `DropTags` + out-of-line reemit offset arrays
+  (fixes >4 KB tile tables). DP200 CI-covered (wsi-fixtures v3); legacy OS-1
+  local-only (3.6 GB). Label image only — no metadata scrub (out of charter).
+  See `docs/superpowers/plans/2026-06-07-band3-bif-region.md`.
 - [ ] **Hamamatsu NDPI backend.** TIFF-based, reuses `internal/tifflow`.
   Label detection uses Hamamatsu vendor tags (e.g., "Reference" /
   "Overview" image role indicators), not Aperio-style ImageDescription.
