@@ -60,7 +60,7 @@ jobs:
         run: |
           mkdir -p sample_files
           cd sample_files
-          gh release download v2 --repo wsilabs/wsi-fixtures --pattern '*.tar'
+          gh release download v3 --repo wsilabs/wsi-fixtures --pattern '*.tar'
           for t in *.tar; do tar xf "$t" && rm "$t"; done
           ls -R .
 
@@ -114,7 +114,7 @@ jobs:
         run: |
           mkdir -p sample_files
           cd sample_files
-          gh release download v2 --repo wsilabs/wsi-fixtures --pattern '*.tar'
+          gh release download v3 --repo wsilabs/wsi-fixtures --pattern '*.tar'
           for t in *.tar; do tar xf "$t" && rm "$t"; done
           ls -R .
       - name: Cross-validate classification against opentile-go (CGo off)
