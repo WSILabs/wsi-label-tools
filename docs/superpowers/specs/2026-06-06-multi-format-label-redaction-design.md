@@ -50,18 +50,25 @@ file-rewrite — out of this repo's charter.
 | generic-TIFF | label IFD (tag 65080 → heuristic ladder) | Splice | 1 (done) |
 | Philips-TIFF | label IFD (ImageDescription `"Label"`) | Splice | 1 (done) |
 | Hamamatsu NDPI | synthesized: left-crop of the macro | Region | 2 |
-| Ventana BIF | label band of the overview + XMP barcodes | Region + XMP scrub | 3 |
+| Ventana BIF | top 1/3 (label zone) of the overview | Region | 3 |
 
-**BIF correction (per the Roche BIF whitepaper v1.0).** BIF is NOT a splice and
-has no separable label IFD. IFD 0 (`IMAGE_DESCRIPTION='Label_Image'`) is the
-*whole-slide overview including the printed label as its top band*; the XMP
-`iScan>ProcessingParameters>AOIParameters>YStart` marks the first tissue row
-(so the label occupies rows `[0, YStart)` of the overview). PHI also lives in
-**XMP metadata** — `Barcode1D`/`Barcode2D` (decoded patient barcodes),
-`UserName`, `SlideIdentifier`. The high-res pyramid (IFD 2+) is PHI-free (AOIs
-are outside the label area). So BIF redaction = **region-blank the overview's
-label band (or remove IFD 0) + scrub XMP barcodes/metadata** — a new
-capability (XMP editing) that warrants its own band (Band 3), not a splice.
+**BIF (per the Roche BIF whitepaper v1.0 + extraction of real samples).** BIF
+is NOT a splice and has no separable label IFD. IFD 0
+(`IMAGE_DESCRIPTION='Label_Image'`) is the *whole-slide overview including the
+printed label as its top band*. The XMP boundary fields are unreliable
+(`LabelBoundary=1000` on legacy OS-1 but `0` on DP 200 Ventana-1, which has no
+`YStart`), and opentile-go itself computes no label crop for BIF — it exposes
+the whole overview as `"overview"`. But the label zone is fixed by slide
+geometry: every slide is 75 mm tall with the **top 25 mm reserved for the
+label** → the label is the **top 1/3** of the overview (confirmed visually on
+both samples; OS-1's `LabelBoundary=1000/3008 ≈ 1/3`). So BIF is just another
+**Region** target (top band, like NDPI's left band): redact the top 1/3 of the
+overview. **Scope is the label image only — NOT de-identification**; the XMP
+barcode/identifier fields are a separate concern and are left untouched. The
+high-res pyramid (IFD 2+) is PHI-free (AOIs are outside the label area). The
+real work is extending the Region strategy to BIF's overview codecs
+(uncompressed multi-strip on DP 200; tiled *abbreviated* JPEG — tables in the
+`JPEGTables` tag — on legacy OS-1).
 
 **Formats deferred / out of charter:**
 
@@ -85,6 +92,11 @@ with those bands, not before.
 
 ## Non-goals
 
+- **De-identification beyond the label image.** Scope is the label *image*
+  (pixels) only. Metadata PHI — TIFF/XMP barcode fields (e.g. BIF
+  `Barcode1D`/`Barcode2D`), `UserName`, `UnitNumber`, `SlideAnnotation`,
+  DICOM tags — is a separate concern and explicitly out of charter. Standing
+  directive (2026-06-07): redact the label image; do not scrub metadata.
 - Reading or rendering pyramid pixel data. (Unchanged from V1.)
 - Decoding any pyramid-level tile. The Region strategy decodes only a
   single small associated image (the NDPI macro), via Go's stdlib JPEG.
@@ -319,11 +331,16 @@ stored in a non-pure-Go-decodable codec" (Strategy 2 gate).
   files `tifflow.Parse` already handles (CMU-1.ndpi parses); broader NDPI
   tifflow hardening (nonstandard tag types, offset reuse seen on other
   samples) is deferred to its own task with fixtures.
-- **Band 3 — BIF (region + XMP scrub).** NOT a splice (see BIF correction):
-  region-blank the overview's label band (rows `[0, YStart)` from XMP) or
-  remove IFD 0, **plus** scrub XMP `Barcode1D`/`Barcode2D`/`UserName`/
-  `SlideIdentifier` — a new XMP-editing capability. Needs its own design pass.
-  Detect: BigTIFF + XMP tag 700 contains `<iScan`.
+- **Band 3 — BIF (Region strategy, top 1/3 of overview).** Detect: BigTIFF +
+  XMP tag 700 contains `<iScan`. Overview = IFD 0; emit a `RoleLabel`
+  `EmbeddedRegion` target with `Region = Rect(0, 0, W, H/3)` (the 25mm-of-75mm
+  label zone). strip + replace, like NDPI. The real work is extending
+  `strategy/region` to BIF's overview codecs: **uncompressed multi-strip**
+  (DP 200) and **tiled abbreviated JPEG** (legacy OS-1 — merge the `JPEGTables`
+  tag to decode/re-encode). Label image only; **no XMP/metadata scrub** (out of
+  charter). Both variants. Possible upstream follow-up: have opentile-go
+  synthesize a BIF `label` (top-1/3 crop of the overview), mirroring its NDPI
+  left-crop label, so the oracle can cross-validate.
 - **Parked:** Leica SCN (overview-role + SCN-XML classification), OME-TIFF
   (out of charter), COG-WSI (out of charter).
 
