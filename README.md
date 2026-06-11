@@ -5,7 +5,7 @@
 ![Go 1.22+](https://img.shields.io/badge/go-1.22%2B-00ADD8?logo=go&logoColor=white)
 ![License MIT](https://img.shields.io/badge/license-MIT-22c55e)
 ![Platforms](https://img.shields.io/badge/platforms-linux%20%7C%20macOS%20%7C%20windows-6366f1)
-![Release](https://img.shields.io/badge/release-v0.1.1-0ea5e9)
+![Release](https://img.shields.io/badge/release-v0.2.0-0ea5e9)
 ![Pure Go](https://img.shields.io/badge/pure_Go-no_CGo-00ADD8)
 ![Status](https://img.shields.io/badge/status-pre--release-f59e0b)
 
@@ -29,10 +29,10 @@ The label-handling capability here also lives inside [wsitools](https://github.c
 
 ## Install
 
-Download the archive for your platform from the [Releases page](https://github.com/cornish/wsi-label-tools/releases/latest), extract, and move the `wsi-label` binary onto your `PATH`.
+Download the archive for your platform from the [Releases page](https://github.com/WSILabs/wsi-label-tools/releases/latest), extract, and move the `wsi-label` binary onto your `PATH`.
 
     # Linux amd64 example
-    curl -L https://github.com/cornish/wsi-label-tools/releases/latest/download/wsi-label_0.1.1_linux_amd64.tar.gz | tar xz
+    curl -L https://github.com/WSILabs/wsi-label-tools/releases/latest/download/wsi-label_0.2.0_linux_amd64.tar.gz | tar xz
     sudo mv wsi-label /usr/local/bin/
     wsi-label --version
 
