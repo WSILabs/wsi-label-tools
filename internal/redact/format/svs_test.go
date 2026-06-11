@@ -34,7 +34,7 @@ func TestDetect_SampleFiles(t *testing.T) {
 		t.Skipf("sample_files/svs not available: %v", err)
 	}
 	for _, e := range entries {
-		if filepath.Ext(e.Name()) != ".svs" {
+		if e.Name()[0] == '.' || filepath.Ext(e.Name()) != ".svs" {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())

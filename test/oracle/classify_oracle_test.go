@@ -68,8 +68,8 @@ func TestLabelPresenceAgrees(t *testing.T) {
 			continue
 		}
 		for _, e := range entries {
-			if !strings.HasSuffix(e.Name(), c.ext) {
-				continue
+			if strings.HasPrefix(e.Name(), ".") || !strings.HasSuffix(e.Name(), c.ext) {
+				continue // skip dotfiles incl. macOS ._ AppleDouble junk
 			}
 			name := e.Name()
 			t.Run(c.dir+"/"+name, func(t *testing.T) {
@@ -96,8 +96,8 @@ func TestLabelOffsetAgrees(t *testing.T) {
 			continue
 		}
 		for _, e := range entries {
-			if !strings.HasSuffix(e.Name(), c.ext) {
-				continue
+			if strings.HasPrefix(e.Name(), ".") || !strings.HasSuffix(e.Name(), c.ext) {
+				continue // skip dotfiles incl. macOS ._ AppleDouble junk
 			}
 			name := e.Name()
 			t.Run(c.dir+"/"+name, func(t *testing.T) {

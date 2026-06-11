@@ -81,7 +81,7 @@ func TestReplace_AllSamples(t *testing.T) {
 		t.Skipf("no sample dir: %v", err)
 	}
 	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".svs") {
+		if strings.HasPrefix(e.Name(), ".") || !strings.HasSuffix(e.Name(), ".svs") {
 			continue
 		}
 		t.Run(e.Name(), func(t *testing.T) {
