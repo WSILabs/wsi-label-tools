@@ -59,24 +59,14 @@ scanners and which PHI exposures you actually encounter.
   (fixes >4 KB tile tables). DP200 CI-covered (wsi-fixtures v3); legacy OS-1
   local-only (3.6 GB). Label image only — no metadata scrub (out of charter).
   See `docs/superpowers/plans/2026-06-07-band3-bif-region.md`.
-- [ ] **Hamamatsu NDPI backend.** TIFF-based, reuses `internal/tifflow`.
-  Label detection uses Hamamatsu vendor tags (e.g., "Reference" /
-  "Overview" image role indicators), not Aperio-style ImageDescription.
-  Likely the most-requested second backend.
 - [ ] **Leica SCN backend.** TIFF-based. `ImageDescription` is XML; label
   detection parses that XML rather than line-splitting. Same tifflow reuse.
-- [ ] **Ventana BIF backend.** TIFF-based. Similar to Aperio in structure.
-- [ ] **Macro scrubbing.** The `macro` associated-image is a low-res photo
-  of the physical slide; if a label sticker was in frame it can carry PHI
-  (text on the label, handwritten marginalia). Add `--macro-policy=keep|strip|blur`
-  to `replace` and `strip`. Blur policy would require a pixel decode path,
-  which we've avoided — weigh the tradeoff, or stick to keep/strip.
-- [ ] **ImageDescription scrubbing.** Aperio writes scanner serial, scan
-  date, and operator name into the baseline IFD's ImageDescription. Not
-  strictly PHI but identifying. Add an opt-in `--scrub-description` flag
-  that rewrites the baseline IFD's ImageDescription, keeping only the
-  structural bits (Aperio header, pyramid params) and dropping freeform
-  text. Requires IFD rewrite which the splice primitive already supports.
+  (The Hamamatsu NDPI and Ventana BIF backends once listed here shipped as
+  Bands 2 and 3 above — SCN is the one TIFF format still outstanding.)
+- [x] **Oracle covers BIF (GH opentile-go#19).** opentile-go now synthesizes
+  a BIF `label` (top-1/3 overview crop) matching our classifier, so the
+  cross-validation oracle (`test/oracle`, pinned opentile v0.63) now includes
+  `bif` in its corpus — CI-covered via the DP200 `Ventana-1.bif` fixture.
 - [ ] **Native batch mode.** `wsi-label batch --csv labels.csv` — move
   what `label-slides.py` does (minus font rendering) into the Go binary so
   sites without Python can deploy a single static binary. Font rendering
@@ -122,3 +112,18 @@ touch related code.
 - [ ] **Memory note pruning.** Periodically revisit the project memory in
   `~/.claude/projects/...` — prune entries that have become stale or
   redundant with what's now in the committed code/docs.
+
+---
+
+## Out of charter (do not add)
+
+Standing directive: **this tool's scope is the label IMAGE (pixels) only —
+NOT de-identification.** Metadata/XMP/barcode/tag scrubbing is a separate
+concern and explicitly does not belong here. The following have been
+proposed before and are deliberately excluded (see `CLAUDE.md`):
+
+- **Macro scrubbing** (`--macro-policy`), **ImageDescription scrubbing**
+  (`--scrub-description`), DICOM tag stripping, BIF `Barcode1D/2D` /
+  `UserName` removal — all de-id, all out of scope.
+- **OME-TIFF** (SubIFD pyramid → needs full file rewrite; `tifflow` rejects
+  SubIFD trees by design) and **COG-WSI** — use `wsitools`.
