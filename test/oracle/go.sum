@@ -1,11 +1,11 @@
+github.com/WSILabs/dicom v1.1.0-wsilabs.1 h1:lzpm77eSSLnepB0QmbZ7bh4ZqvzVLEQuHIJGfIchigc=
+github.com/WSILabs/dicom v1.1.0-wsilabs.1/go.mod h1:xSi6Eyn0p5BUZdFnedNUZgN9dgyQQDzOOddzl3i86aM=
 github.com/google/go-cmp v0.6.0 h1:ofyhxvXcZhMsU5ulbFiLKl/XBFqE1GSq7atu8tAmTRI=
 github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
 github.com/hhrutter/lzw v1.0.0 h1:laL89Llp86W3rRs83LvKbwYRx6INE8gDn0XNb1oXtm0=
 github.com/hhrutter/lzw v1.0.0/go.mod h1:2HC6DJSn/n6iAZfgM3Pg+cP1KxeWc3ezG8bBqW5+WEo=
-github.com/suyashkumar/dicom v1.1.0 h1:AG+N/aQnD+jzkFuFzz2wO401qXI8KnNcYGQgvTBr9LA=
-github.com/suyashkumar/dicom v1.1.0/go.mod h1:8Yw14x/0r4fXVnutbCJpF3HiLVbgMS1DQ2HpfbDjq8Y=
-github.com/wsilabs/opentile-go v0.36.0 h1:Kr8GgyLBv81soSMdp6eTQkhN9fQi123+JsJy6De2fkk=
-github.com/wsilabs/opentile-go v0.36.0/go.mod h1:uTJrlupQEXcTaR5k5Y0cGbpGqyUseI4/OJjeRxbW1h0=
+github.com/wsilabs/opentile-go v0.63.0 h1:QowELTg148++U6TMBDwewnvMqsfKBOaI8R599VQcd8Q=
+github.com/wsilabs/opentile-go v0.63.0/go.mod h1:JqBCAclmrPm79oonDV6bPZtX5f5lPYuprga8MrG162c=
 golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f h1:W3F4c+6OLc6H2lb//N1q4WpJkhzJCK5J6kUi1NTVXfM=
 golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f/go.mod h1:J1xhfL/vlindoeF/aINzNzt2Bket5bjo9sdOYzOsU80=
 golang.org/x/image v0.39.0 h1:skVYidAEVKgn8lZ602XO75asgXBgLj9G/FE3RbuPFww=

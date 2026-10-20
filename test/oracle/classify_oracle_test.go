@@ -27,6 +27,7 @@ var corpus = []struct {
 	{"generic-tiff", ".tiff"},
 	{"philips-tiff", ".tiff"},
 	{"ndpi", ".ndpi"},
+	{"bif", ".bif"}, // opentile-go >=v0.63 synthesizes a BIF "label" (top-1/3 overview crop); GH #19
 }
 
 // hasLabelOurs reports whether our classifier finds a RoleLabel target.
@@ -48,8 +49,8 @@ func hasLabelOpentile(t *testing.T, path string) bool {
 		t.Fatalf("opentile open %s: %v", path, err)
 	}
 	defer s.Close()
-	for _, a := range s.Associated() {
-		if a.Type() == "label" {
+	for _, a := range s.AssociatedImages() {
+		if a.Type() == ot.AssociatedLabel {
 			return true
 		}
 	}
@@ -109,11 +110,11 @@ func TestLabelOffsetAgrees(t *testing.T) {
 				}
 				defer s.Close()
 				var wantOff int64 = -1
-				for _, a := range s.Associated() {
-					if a.Type() != "label" {
+				for _, a := range s.AssociatedImages() {
+					if a.Type() != ot.AssociatedLabel {
 						continue
 					}
-					if off, ok := s.AssociatedIFDOffset(a); ok {
+					if off, ok := a.IFDOffset(); ok {
 						wantOff = off
 					}
 				}
